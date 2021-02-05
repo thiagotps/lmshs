@@ -1,7 +1,8 @@
 module Expr
   ( Expr,
     Var (..),
-    fromVar,
+    Term (..),
+    exprFromVar,
     mkVar,
     setVarType,
     setVarIndex,
@@ -12,7 +13,7 @@ import qualified Data.List as L
 import Data.Map (Map)
 import qualified Data.Map as M
 
-data Expr = Expr (Map Term Int) Int
+data Expr = Expr (Map Term Int) Int deriving (Eq)
 
 newtype Term = Term (Map Var Int) deriving (Eq, Ord)
 
@@ -70,6 +71,11 @@ setVarType t v = v {varType = t}
 setVarIndex :: (Maybe Int, Maybe Int) -> Var -> Var
 setVarIndex (a, b) v = v {index1 = a, index2 = b}
 
-fromVar :: Var -> Expr
-fromVar v = Expr (M.singleton term 1) 0
-  where term = Term $ M.singleton v 1
+exprFromVar :: Var -> Expr
+exprFromVar = exprFromTerm . termFromVar
+
+termFromVar :: Var -> Term
+termFromVar v = Term $ M.singleton v 1
+
+exprFromTerm :: Term -> Expr
+exprFromTerm t = Expr (M.singleton t 1) 0
