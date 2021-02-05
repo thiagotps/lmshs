@@ -22,3 +22,8 @@ instance Semigroup STSum where
 
 instance Monoid STSum where
   mempty = STSum mempty 0
+
+
+-- expand :: STVar -> (Var -> Expr) -> STSum
+-- expand (STVar (Term m)) f = mempty
+--   -- where
