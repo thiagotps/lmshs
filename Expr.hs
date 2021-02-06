@@ -1,5 +1,7 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 module Expr
-  ( Expr,
+  ( Expr (..),
     Var (..),
     Term (..),
     exprFromVar,
@@ -13,9 +15,12 @@ import qualified Data.List as L
 import Data.Map (Map)
 import qualified Data.Map as M
 
-data Expr = Expr (Map Term Int) Int deriving (Eq)
+-- NOTE: Amap stands for Algebra Map.
+newtype Amap a b = Amap {getAMap :: Map a b} deriving (Eq, Ord)
 
-newtype Term = Term (Map Var Int) deriving (Eq, Ord)
+newtype Expr = Expr (Amap Term Int) deriving (Eq, Ord, Semigroup, Monoid)
+
+newtype Term = Term (Amap Var Int) deriving (Eq, Ord, Semigroup, Monoid)
 
 data VarType = Cnt | RV deriving (Eq, Ord)
 
@@ -27,40 +32,36 @@ data Var = Var
   }
   deriving (Eq, Ord)
 
-instance Semigroup Term where
-  (<>) (Term m1) (Term m2) = Term $ M.unionWith (+) m1 m2
+instance (Num b, Ord a, Eq b) => (Semigroup (Amap a b)) where
+  (<>) (Amap m) (Amap n) = Amap $ M.filter (/= 0) . M.unionWith (+) m $ n
 
-instance Monoid Term where
-  mempty = Term M.empty
+instance (Num b, Ord a, Eq b) => Monoid (Amap a b) where
+  mempty = Amap mempty
 
 instance Num Expr where
-  (+) (Expr m a) (Expr n b) = Expr q (a + b)
-    where q = M.filter (/=0) $ M.unionWith (+) m n
+  (+) m n = m <> n
 
-  -- TODO: This can receive a better implementation
-  (*) (Expr m a) (Expr n b) = Expr mn 0 + scale m b + scale n a + Expr M.empty (a * b)
+  -- TODO: I think that it can be improved using fromListWith
+  (*) (Expr (Amap m)) (Expr (Amap n)) = Expr $ mconcat l
     where
-      lm = M.toList m
-      ln = M.toList n
-      mn = M.fromListWith (+) [(x <> y, a * b) | (x, a) <- lm, (y, b) <- ln]
-      scale :: Map Term Int -> Int -> Expr
-      scale m 0 = 0
-      scale m 1 = Expr m 0
-      scale m a = Expr (M.map (* a) m) 0
-
-  abs = error "abs is not implemented"
-  signum = error "signum is not implemented"
-  fromInteger n = Expr M.empty (fromInteger n)
-  negate (Expr m a) = Expr (M.map negate m) (- a)
+      l = [Amap $ M.singleton (x <> y) (a * b) | (x, a) <- M.toList m, (y, b) <- M.toList n]
+  abs = error "abs not implemented for Expr"
+  signum = error "signum not implemented for Expr"
+  fromInteger = Expr . Amap . M.singleton mempty . fromInteger
+  negate (Expr (Amap m)) = Expr . Amap . M.map negate $ m
 
 instance Show Expr where
-  show (Expr m a) = L.intercalate " + " $ [show cnt ++ "*" ++ show mul | (mul, cnt) <- M.toList m] ++ [show a]
+  show (Expr (Amap m)) = L.intercalate " + " $ [showPair cnt mul | (mul, cnt) <- M.toList m]
+    where
+      showPair cnt mul
+        | mul == mempty = show cnt
+        | otherwise = show cnt ++ "*" ++ show mul
 
 instance Show Var where
   show (Var _ c i j) = [c] ++ maybe [] show i ++ maybe [] show j
 
 instance Show Term where
-  show (Term m1) = concat [show v ++ "^" ++ show p | (v, p) <- M.toList m1]
+  show (Term (Amap m)) = concat [show v ++ "^" ++ show p | (v, p) <- M.toList m]
 
 mkVar :: Char -> Var
 mkVar c = Var Cnt c Nothing Nothing
@@ -75,7 +76,7 @@ exprFromVar :: Var -> Expr
 exprFromVar = exprFromTerm . termFromVar
 
 termFromVar :: Var -> Term
-termFromVar v = Term $ M.singleton v 1
+termFromVar v = Term . Amap $ M.singleton v 1
 
 exprFromTerm :: Term -> Expr
-exprFromTerm t = Expr (M.singleton t 1) 0
+exprFromTerm t = Expr . Amap $ M.singleton t 1
