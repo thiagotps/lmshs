@@ -6,7 +6,8 @@ module STVar
     STSum (..),
     STVar (..),
     expand,
-    kernel
+    kernel,
+    indReduce,
   )
 where
 
@@ -39,12 +40,15 @@ indReduce i (Term (Amap vm)) = STVar . Term . Amap . M.fromList . getIndList $ r
     getIndList [] = []
     getIndList (a : as) = if all (i (fst a) . fst) as then a : getIndList as else getIndList as
 
+collectFromExpr :: (Var -> Var -> Bool) -> Expr -> [STVar]
+collectFromExpr i expr = S.toList stVarSet
+    where termSet = let (Expr (Amap sm)) = expr in M.keysSet sm
+          stVarSet = S.map (indReduce i) termSet
+
 expand :: STVar -> (Var -> Expr) -> (Var -> Var -> Bool) -> [STVar]
-expand (STVar (Term (Amap m))) e i = S.toList stVarSet
+expand (STVar (Term (Amap m))) e i = collectFromExpr i s
   where
     s = sum [e x ^ a | (x, a) <- M.toList m]
-    termSet = let (Expr (Amap sm)) = s in M.keysSet sm
-    stVarSet = S.map (indReduce i) termSet
 
 kernel :: STVar -> (Var -> Expr) -> (Var -> Var -> Bool) -> Int
 kernel root e i = length (go [root] S.empty)

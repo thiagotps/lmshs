@@ -7,6 +7,8 @@ module Expr
     Amap (..),
     VarType (..),
     exprFromVar,
+    termFromVar,
+    exprFromTerm,
     mkVar,
     setVarType,
     setVarIndex,
