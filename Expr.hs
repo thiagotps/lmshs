@@ -4,6 +4,7 @@ module Expr
   ( Expr (..),
     Var (..),
     Term (..),
+    Amap (..),
     exprFromVar,
     mkVar,
     setVarType,

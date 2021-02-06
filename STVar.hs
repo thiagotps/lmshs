@@ -1,3 +1,4 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 -- |
 
 module STVar  where
@@ -6,24 +7,21 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import qualified Data.List as L
 
-
-data STSum = STSum (Map STVar Expr) Expr
-newtype STVar = STVar Term deriving (Ord, Eq)
+newtype STSum = STSum (Amap (Maybe STVar) Expr) deriving (Eq, Ord, Semigroup, Monoid)
+newtype STVar = STVar Term deriving (Eq, Ord)
 
 instance Show STVar where
   show (STVar t) = "E[" ++ show t ++ "]"
 
 instance Show STSum where
-  show (STSum m a) = L.intercalate " + " $ [show cnt ++ "*" ++ show mul | (mul, cnt) <- M.toList m] ++ [show a]
+  show (STSum (Amap m)) = L.intercalate " + " $ [showPair cnt mul | (mul, cnt) <- M.toList m]
+    where showPair cnt mul = case mul of
+                               Just m -> show cnt ++ "*" ++ show m
+                               Nothing -> show cnt
 
-instance Semigroup STSum where
-  (<>) (STSum m a) (STSum n b) = STSum p (a+b)
-    where p = M.filter (/=0) (M.unionWith (+) m n)
+-- -- expand :: STVar -> (Var -> Expr) -> STSum
+-- -- expand (STVar (Term m)) f = mempty
+-- --   -- where
 
-instance Monoid STSum where
-  mempty = STSum mempty 0
-
-
--- expand :: STVar -> (Var -> Expr) -> STSum
--- expand (STVar (Term m)) f = mempty
---   -- where
+-- expand :: STVar -> (Var -> Expr) -> [STVar]
+-- expand (STVar (Term m)) f = sum [()]
