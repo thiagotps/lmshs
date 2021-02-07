@@ -8,6 +8,7 @@ module STVar
     expand,
     kernel,
     indReduce,
+    collectFromExpr
   )
 where
 

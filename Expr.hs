@@ -8,6 +8,7 @@ module Expr
     VarType (..),
     exprFromVar,
     termFromVar,
+    termFromList,
     exprFromTerm,
     mkVar,
     setVarType,
@@ -66,6 +67,9 @@ instance Show Var where
 
 instance Show Term where
   show (Term (Amap m)) = concat [show v ++ "^" ++ show p | (v, p) <- M.toList m]
+
+termFromList :: [(Var, Int)] -> Term
+termFromList l = Term $ mconcat [Amap (M.singleton x n) | (x,n) <- l]
 
 mkVar :: Char -> Var
 mkVar c = Var Cnt c Nothing Nothing
