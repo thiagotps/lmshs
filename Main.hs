@@ -1,6 +1,7 @@
 module Main where
-import Expr
-import STVar
+
+import Symbolic.Expr
+import Symbolic.STVar
 
 a :: Int -> Var
 a n = setVarIndex (Just n, Nothing) . mkVar $ 'a'
@@ -18,7 +19,7 @@ v1k n =
         index2 = Just n
       }
 
-isInd :: Var -> Var -> Bool
+isInd :: IndFunc
 isInd x y = go x y || go y x
   where
     go Var {name = 'u', index2 = Just n} Var {name = 'v', index2 = Just m} = n >= m
@@ -30,15 +31,25 @@ defaultVar = Var {name = ' ', varType = Cnt, index1 = Nothing, index2 = Nothing}
 
 micro :: Expr
 micro = exprFromVar defaultVar{name = 'µ'}
-nk n = exprFromVar defaultVar{name='n', index2=Just n}
+nk n = exprFromVar defaultVar{varType=RV, name='n', index2=Just n}
 
-expandFunc :: Var -> Expr
+expandFunc :: ExpandFunc
 expandFunc Var{name='v', index2 = Just n} = (1 - micro*(xk n)^2)*(v1k n) + micro*(nk n)*(xk n)
 expandFunc v = exprFromVar v
 
-stList = collectFromExpr isInd ((v1k 0)^2 * (xk 0) ^ 2)
+reduce :: RVReduceFunc
+reduce (Var{name='u'}, n) | n == 1 = 0
+                          | otherwise = toExpr defaultVar{name='γ', index1=Just n}
+reduce (v, n) = toExpr v ^ n
 
+expr = (v1k 0)^2 * (xk 0) ^ 2
+stList = collectFromExpr isInd reduce  expr
+
+-- expr2 = (v1k 0 ^ 2) * (toExpr (a 1)) ^ 2 * (toExpr (u (-1))) ^2
+-- res2 = indReduce isInd reduce (toTerm . A.toList . getExpr $ expr2)
 
 
 main :: IO ()
-main = print stList
+main = do
+  print stList
+  print expr
