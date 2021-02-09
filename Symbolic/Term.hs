@@ -14,7 +14,9 @@ import Symbolic.Var
 newtype Term = Term {getTerm :: Amap Var Int} deriving (Eq, Ord, Semigroup, Monoid)
 
 instance Show Term where
-  show (Term m) = concat [show v ++ "^" ++ show p | (v, p) <- A.toList m]
+  show (Term m) = concat [fromPair v p | (v, p) <- A.toList m]
+    where fromPair v p | p == 1 = show v
+                       | otherwise = show v ++ "^" ++ show p
 
 class IsTerm a where
   toTerm :: a -> Term
