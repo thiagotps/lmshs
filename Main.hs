@@ -7,11 +7,6 @@ import Symbolic.STVar
 import Symbolic.Term
 import Symbolic.Var
 import System.Environment (getArgs)
-
-filterLenght = 8 :: Int
-
-dataLenght = 1 :: Int
-
 a :: Int -> Var
 a n = defaultVar {name = 'a', index1 = Just n}
 
