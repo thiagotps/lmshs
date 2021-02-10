@@ -11,6 +11,7 @@ module Symbolic.STVar
     ExpandFunc,
     RVReduceFunc,
     kernel,
+    kernelExpr,
     expand
   )
 where
@@ -86,3 +87,6 @@ kernel rootList e i f = length $ go (S.fromList . map normalize $ rootList) S.em
                     where neighSet = S.fromList . map normalize . concatMap (\v -> expand v e i f) $ visitList
                           visitList = S.toList visitSet
                           seen' = seen <> visitSet
+
+kernelExpr :: Expr -> ExpandFunc -> IndFunc -> RVReduceFunc ->  Int
+kernelExpr expr e i f = kernel (collectFromExpr i f expr) e i f
