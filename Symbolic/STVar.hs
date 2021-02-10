@@ -78,14 +78,11 @@ normalize (STVar (Term t)) = STVar . Term . A.mapKey subIndex $ t
 
 
 kernel :: [STVar] -> ExpandFunc -> IndFunc -> RVReduceFunc -> Int
-kernel rootList e i f = length $ go (map id rootList) S.empty
+kernel rootList e i f = length $ go (S.fromList . map normalize $ rootList) S.empty
   where
-    go :: [STVar] -> Set STVar -> [STVar]
-    go [] _ = []
-    go (vRaw : vs) seen =
-      let seen' = S.insert v seen
-          v = normalize vRaw
-          neigh = map id (expand v e i f)
-       in if v `S.member` seen
-            then go vs seen
-            else v : go (vs ++ neigh) seen'
+    go :: Set STVar -> Set STVar -> [STVar]
+    go visitSet seen | S.null visitSet = []
+                     | otherwise = visitList ++ go (neighSet `S.difference` seen') seen'
+                    where neighSet = S.fromList . map normalize . concatMap (\v -> expand v e i f) $ visitList
+                          visitList = S.toList visitSet
+                          seen' = seen <> visitSet

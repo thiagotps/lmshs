@@ -12,7 +12,7 @@ a n = defaultVar{name='a', index1=Just n}
 u :: Int -> Var
 u n = defaultVar{name='u', index2=Just n, varType=RV}
 
-filterLenght = 6 :: Int
+filterLenght = 7 :: Int
 dataLenght = 1 :: Int
 x n = sum [toExpr (a i) * toExpr (u (n - i)) | i <- [0..(dataLenght - 1)]]
 
