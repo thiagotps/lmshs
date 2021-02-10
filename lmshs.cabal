@@ -60,7 +60,7 @@ executable lmshs
   --other-extensions:
 
   -- Other library packages from which modules are imported.
-  build-depends:       base >=4.13 && <4.14, containers
+  build-depends:       base >=4.13 && <4.14, containers, unordered-containers, parallel
 
   -- Directories containing source files.
   -- hs-source-dirs:
