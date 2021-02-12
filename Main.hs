@@ -80,5 +80,5 @@ main = do
   [filterLenght, dataLenght] <- fmap (map read) getArgs
   let finalExpr = buildExpr filterLenght dataLenght
       expandFunc = expandFuncBuilder filterLenght dataLenght
-      numberOfEqs = kernelExpr finalExpr expandFunc isInd reduce :: Int
+      numberOfEqs = kernelExpr finalExpr expandFunc isInd reduce
       in print numberOfEqs

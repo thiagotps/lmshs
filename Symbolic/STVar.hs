@@ -10,6 +10,7 @@ module Symbolic.STVar
     IndFunc,
     ExpandFunc,
     RVReduceFunc,
+    KernelOutput (..),
     kernel,
     kernelExpr,
     expand
@@ -28,6 +29,8 @@ import Symbolic.Var
 import qualified Symbolic.Amap as A
 import Data.Monoid (Product(Product))
 import Debug.Trace (trace)
+import Data.Semigroup (Sum(Sum))
+import Data.Semigroup (Sum(getSum))
 
 newtype STSum = STSum {getSTSum :: Amap STVar Expr} deriving (Eq, Ord, Semigroup, Monoid)
 
@@ -78,15 +81,28 @@ normalize (STVar (Term t)) = STVar . Term . A.mapKey subIndex $ t
         subIndex v@Var{index2=Just n} = v{index2=Just (n - cnt)}
 
 
-kernel :: [STVar] -> ExpandFunc -> IndFunc -> RVReduceFunc -> Int
-kernel rootList e i f = length $ go (S.fromList . map normalize $ rootList) S.empty
+data KernelOutput = KernelOutput
+  { numberOfEqs :: Int,
+    numberOfLevels :: Int,
+    levelSize :: [Int]
+  }
+  deriving (Eq, Show)
+
+instance Semigroup KernelOutput where
+  (<>) (KernelOutput a1 b1 c1) (KernelOutput a2 b2 c2) = KernelOutput (a1 + a2) (b1 + b2) (c1 ++ c2)
+
+instance Monoid KernelOutput where
+  mempty = KernelOutput 0 0 []
+
+kernel :: [STVar] -> ExpandFunc -> IndFunc -> RVReduceFunc -> KernelOutput
+kernel rootList e i f = go (S.fromList . map normalize $ rootList) S.empty
   where
-    go :: Set STVar -> Set STVar -> [STVar]
-    go visitSet seen | S.null visitSet = []
-                     | otherwise = visitList ++ go (neighSet `S.difference` seen') seen'
+    go :: Set STVar -> Set STVar -> KernelOutput
+    go visitSet seen | S.null visitSet = mempty
+                     | otherwise = KernelOutput (length visitList) 1 [length visitList] <> go (neighSet `S.difference` seen') seen'
                     where neighSet = S.fromList . map normalize . concatMap (\v -> expand v e i f) $ visitList
                           visitList = S.toList visitSet
                           seen' = seen <> visitSet
 
-kernelExpr :: Expr -> ExpandFunc -> IndFunc -> RVReduceFunc ->  Int
+kernelExpr :: Expr -> ExpandFunc -> IndFunc -> RVReduceFunc ->  KernelOutput
 kernelExpr expr e i f = kernel (collectFromExpr i f expr) e i f
