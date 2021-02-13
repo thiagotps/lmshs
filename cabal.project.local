@@ -1,1 +1,3 @@
+profiling: True
+profiling-detail: all-functions
 optimization: 2
