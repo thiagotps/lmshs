@@ -51,7 +51,7 @@ extra-source-files:  CHANGELOG.md
 executable lmshs
   -- .hs or .lhs file containing the Main module.
   main-is:             Main.hs
-  ghc-options: -threaded
+  ghc-options: -threaded -prof -fprof-auto -rtsopts
 
   -- Modules included in this executable, other than Main.
   other-modules: Symbolic.Amap, Symbolic.Var, Symbolic.Expr, Symbolic.Term, Symbolic.STVar
@@ -61,7 +61,7 @@ executable lmshs
   --other-extensions:
 
   -- Other library packages from which modules are imported.
-  build-depends:       base >=4.13 && <4.14, containers, unordered-containers, parallel
+  build-depends:       base >=4.13 && <4.14, containers
 
   -- Directories containing source files.
   -- hs-source-dirs:
