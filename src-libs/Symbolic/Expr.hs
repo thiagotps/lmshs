@@ -17,8 +17,9 @@ import Symbolic.Var
 import Symbolic.Term
 import Data.Map (Map)
 import qualified Data.Map as M
+import Data.Hashable (Hashable)
 
-newtype Expr = Expr {getExpr :: Amap Term Int} deriving (Eq, Ord, Semigroup, Monoid)
+newtype Expr = Expr {getExpr :: Amap Term Int} deriving (Eq, Semigroup, Monoid, Hashable)
 
 instance Num Expr where
   (+) m n = m <> n

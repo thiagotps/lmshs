@@ -1,10 +1,13 @@
+{-# LANGUAGE DeriveAnyClass #-}
 -- |
 
 module Symbolic.Var (Var(..), VarType(..), defaultVar) where
 import qualified Data.List as L
+import Data.Hashable (Hashable)
+import GHC.Generics (Generic)
 
 
-data VarType = Cnt | RV deriving (Eq, Ord)
+data VarType = Cnt | RV deriving (Eq, Ord, Generic, Hashable)
 
 data Var = Var
   { varType :: VarType,
@@ -12,7 +15,7 @@ data Var = Var
     index1 :: Maybe Int,
     index2 :: Maybe Int
   }
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Generic, Hashable)
 
 instance Show Var where
   show (Var _ c i j) = c : L.intercalate "," (filter (not . null) [maybe [] show i , case j of

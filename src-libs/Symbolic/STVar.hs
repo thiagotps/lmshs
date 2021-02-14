@@ -20,8 +20,8 @@ where
 import qualified Data.List as L
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Set (Set)
-import qualified Data.Set as S
+import Data.HashSet (HashSet)
+import qualified Data.HashSet as S
 import Symbolic.Expr
 import Symbolic.Term
 import qualified Symbolic.Term as T
@@ -29,12 +29,12 @@ import Symbolic.Var
 import qualified Symbolic.Amap as A
 import Data.Monoid (Product(Product))
 import Debug.Trace (trace)
-import Data.Semigroup (Sum(Sum))
-import Data.Semigroup (Sum(getSum))
+import Data.Semigroup ( Sum(Sum), Sum(getSum) )
+import Data.Hashable (Hashable)
 
-newtype STSum = STSum {getSTSum :: Amap STVar Expr} deriving (Eq, Ord, Semigroup, Monoid)
+newtype STSum = STSum {getSTSum :: Amap STVar Expr} deriving (Eq, Semigroup, Monoid, Hashable)
 
-newtype STVar = STVar {getSTVar :: Term} deriving (Eq, Ord, Semigroup, Monoid)
+newtype STVar = STVar {getSTVar :: Term} deriving (Eq, Semigroup, Monoid, Hashable)
 
 instance Show STVar where
   show (STVar t) = "E[" ++ show t ++ "]"
@@ -55,11 +55,14 @@ indReduce i f (Term m) = let (term, Product expr) = getInd rvList
   where getInd :: [(Var, Int)] -> (Term, Product Expr)
         getInd [] = (mempty, mempty)
         getInd [a] = let r = f a in if r == (toExpr . toTerm $ a) then (toTerm a, mempty) else (mempty, Product r)
-        getInd (a@(v, _) : as) = (if isIndFromOthers v then (mempty, Product (f a)) else (toTerm a, mempty)) <> getInd as
+        getInd (a@(v, _) : as) = res <> getInd as
+          where res = if isIndFromOthers v then (mempty, Product (f a)) else (toTerm a, mempty)
+
         isIndFromOthers v = all (i v) . filter (/= v) . map fst $ rvList
-        cntList = filter ((Cnt ==) . getType) . A.toList $ m
+        termList = A.toList  m
+        cntList = filter ((Cnt ==) . getType) termList
         cntExpr = toExpr . foldMap toTerm $ cntList
-        rvList = filter ((RV ==) . getType) . A.toList $ m
+        rvList = filter ((RV ==) . getType) termList
         getType = varType . fst
 
 collectFromExpr :: IndFunc -> RVReduceFunc -> Expr -> [STVar]
@@ -74,7 +77,7 @@ expand v@(STVar (Term m)) e i f = collectFromExpr i f s
 
 normalize :: STVar -> STVar
 normalize (STVar (Term t)) = STVar . Term . A.mapKey subIndex $ t
-  where cnt = case index2 . fst . head . A.toList $ t of
+  where cnt = case index2 . fst . minimum .  A.toList $ t of
               Nothing -> error "Index2 must exist in normalization"
               Just n -> n
         subIndex :: Var -> Var
@@ -97,7 +100,7 @@ instance Monoid KernelOutput where
 kernel :: [STVar] -> ExpandFunc -> IndFunc -> RVReduceFunc -> KernelOutput
 kernel rootList e i f = go (S.fromList . map normalize $ rootList) S.empty
   where
-    go :: Set STVar -> Set STVar -> KernelOutput
+    go :: HashSet STVar -> HashSet STVar -> KernelOutput
     go visitSet seen | S.null visitSet = mempty
                      | otherwise = KernelOutput (length visitList) 1 [length visitList] <> go (neighSet `S.difference` seen') seen'
                     where neighSet = S.fromList . map normalize . concatMap (\v -> expand v e i f) $ visitList
