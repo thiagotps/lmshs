@@ -7,6 +7,8 @@ module Symbolic.STVar
     -- kernel,
     indReduce,
     collectFromExpr,
+    applyExpectedOperator,
+    expandIntoSTSum,
     IndFunc,
     ExpandFunc,
     RVReduceFunc,
@@ -31,6 +33,7 @@ import Data.Monoid (Product(Product))
 import Debug.Trace (trace)
 import Data.Semigroup ( Sum(Sum), Sum(getSum) )
 import Data.Hashable (Hashable)
+import Control.Monad (guard)
 
 newtype STSum = STSum {getSTSum :: Amap STVar Expr} deriving (Eq, Semigroup, Monoid, Hashable)
 
@@ -58,11 +61,9 @@ indReduce i f (Term m) = let (term, Product expr) = getInd rvList
                        Nothing -> (toTerm a, mempty)
                        Just r -> (mempty, Product r)
         getInd (a@(v, _) : as) = res <> getInd as
-          where res = case  isIndFromOthers v of
-                        False -> (toTerm a, mempty)
-                        True -> case f a of
-                                  Nothing -> (toTerm a, mempty)
-                                  Just r -> (mempty, Product r)
+          where res = case (guard (isIndFromOthers v) >> f a >>= (\r -> Just (mempty, Product r))) of
+                        Nothing -> (toTerm a, mempty)
+                        Just a -> a
         isIndFromOthers v = all (i v) . filter (/= v) . map fst $ rvList
         termList = A.toList  m
         cntList = filter ((Cnt ==) . getType) termList
@@ -70,11 +71,20 @@ indReduce i f (Term m) = let (term, Product expr) = getInd rvList
         rvList = filter ((RV ==) . getType) termList
         getType = varType . fst
 
-collectFromExpr :: IndFunc -> RVReduceFunc -> Expr -> [STVar]
-collectFromExpr i f (Expr m) = filter (/= mempty) . A.toListKeys .  getSTSum $  s
-    where s = mconcat [STSum (A.singleton stVar (expr * fromIntegral n)) | (t, n) <- A.toList m, let (stVar, expr) = reduce t]
-          reduce = indReduce i f
+applyExpectedOperator :: IndFunc -> RVReduceFunc -> Expr -> STSum
+applyExpectedOperator i f (Expr m) = mconcat [STSum (A.singleton stVar (expr * fromIntegral n)) | (t, n) <- A.toList m, let (stVar, expr) = reduce t]
+  where reduce = indReduce i f
 
+collectFromExpr :: IndFunc -> RVReduceFunc -> Expr -> [STVar]
+collectFromExpr i f expr = filter (/= mempty) . A.toListKeys .  getSTSum $  s
+    where s = applyExpectedOperator i f expr
+
+
+expandIntoSTSum  :: STVar -> ExpandFunc -> IndFunc -> RVReduceFunc -> STSum
+expandIntoSTSum v@(STVar (Term m)) e i f = applyExpectedOperator i f s
+    where s = product [e x ^ a | (x, a) <- A.toList m]
+
+-- TODO: expand can be implemented in terms of expandIntoSTSum
 expand :: STVar -> ExpandFunc -> IndFunc -> RVReduceFunc -> [STVar]
 expand v@(STVar (Term m)) e i f = collectFromExpr i f s
   where
