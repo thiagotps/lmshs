@@ -47,17 +47,22 @@ instance Show STSum where
 
 type IndFunc = Var -> Var -> Bool
 type ExpandFunc = Var -> Expr
-type RVReduceFunc = (Var, Int) -> Expr
+type RVReduceFunc = (Var, Int) -> Maybe Expr
 
 indReduce :: IndFunc -> RVReduceFunc -> Term -> (STVar, Expr)
 indReduce i f (Term m) = let (term, Product expr) = getInd rvList
                          in  (STVar term, cntExpr * expr)
   where getInd :: [(Var, Int)] -> (Term, Product Expr)
         getInd [] = (mempty, mempty)
-        getInd [a] = let r = f a in if r == (toExpr . toTerm $ a) then (toTerm a, mempty) else (mempty, Product r)
+        getInd [a] = case f a of
+                       Nothing -> (toTerm a, mempty)
+                       Just r -> (mempty, Product r)
         getInd (a@(v, _) : as) = res <> getInd as
-          where res = if isIndFromOthers v then (mempty, Product (f a)) else (toTerm a, mempty)
-
+          where res = case  isIndFromOthers v of
+                        False -> (toTerm a, mempty)
+                        True -> case f a of
+                                  Nothing -> (toTerm a, mempty)
+                                  Just r -> (mempty, Product r)
         isIndFromOthers v = all (i v) . filter (/= v) . map fst $ rvList
         termList = A.toList  m
         cntList = filter ((Cnt ==) . getType) termList

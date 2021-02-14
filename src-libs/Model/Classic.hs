@@ -80,12 +80,12 @@ expandFuncBuilder filterLenght dataLenght = expandFunc
 
 reduce :: RVReduceFunc
 reduce (Var {name = 'u'}, n)
-  | odd n = 0
-  | otherwise = toExpr defaultVar {name = 'γ', index1 = Just n}
+  | odd n = Just 0
+  | otherwise = Just $ toExpr defaultVar {name = 'γ', index1 = Just n}
 reduce (Var {name = 'n'}, n)
-  | odd n = 0
-  | otherwise = toExpr defaultVar {name = 'σ'} ^ n
-reduce (v, n) = toExpr v ^ n
+  | odd n = Just 0
+  | otherwise = Just $ toExpr defaultVar {name = 'σ'} ^ n
+reduce (v, n) = Nothing
 
 buildExpr :: FilterLenght -> DataLenght -> Expr
 buildExpr filterLenght dataLenght = inn ^ 2
