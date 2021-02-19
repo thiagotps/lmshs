@@ -8,6 +8,7 @@ import Symbolic.Term
 import Symbolic.Expr
 import qualified Symbolic.Amap as A
 import qualified Data.Map as M
+import Data.Bifunctor (first)
 
 testNumberOfEquations = hspec $ do
   describe "Number Of Equations"  $ do
@@ -41,6 +42,12 @@ instance (Ord a, Arbitrary a, Arbitrary b, Num b, Eq b) => Arbitrary (Amap a b) 
 instance Arbitrary VarType where
   arbitrary = oneof [return RV, return Cnt]
 
+newtype RVar = RVar {getRVar :: Var} deriving (Eq, Show, Ord)
+instance Arbitrary RVar where
+  arbitrary = let v = Var RV <$> arbitrary <*> arbitrary <*> (Just <$> arbitrary)
+              in RVar <$> v
+
+
 instance Arbitrary Var where
   arbitrary = Var <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
 
@@ -49,6 +56,12 @@ instance Arbitrary Term where
 
 instance Arbitrary Expr where
   arbitrary = Expr <$> arbitrary
+
+instance Arbitrary STVar where
+  arbitrary = STVar . Term . A.fromList . map (first getRVar) <$> (arbitrary :: Gen [(RVar, Int)])
+
+instance Arbitrary STSum where
+  arbitrary = STSum <$> arbitrary
 
 testExpr = hspec $ do
   describe "Expr properties" $ do
@@ -74,5 +87,17 @@ testExpr = hspec $ do
       property (\(x,y,z) -> (x :: Expr) * (y + z) == x*y + x*z)
 
 
+testNormalize = hspec $ do
+  describe "Normalize properties" $ do
+    it "normalize (normalize x) = normalize x" $ do
+      property (\x -> normalize (normalize  x) == normalize x)
+    it "ignore order" $ do
+      property (forAll rVarListGen ignoreOrder)
+  where ignoreOrder l = let lr = reverse l
+                            m = STVar . Term . A.fromList $ l
+                            n = STVar . Term . A.fromList $ lr
+                            in normalize m == normalize n
+        rVarListGen = map (first getRVar) <$> (arbitrary :: Gen [(RVar, Int)])
 
-main = sequence [testAmap, testNumberOfEquations]
+
+main = sequence [testAmap, testExpr, testNormalize, testNumberOfEquations]

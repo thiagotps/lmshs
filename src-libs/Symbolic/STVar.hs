@@ -13,7 +13,8 @@ module Symbolic.STVar
     KernelOutput (..),
     kernel,
     kernelExpr,
-    expand
+    expand,
+    normalize,
   )
 where
 
