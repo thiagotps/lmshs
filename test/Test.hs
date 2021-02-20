@@ -100,15 +100,12 @@ testExpr = hspec $ do
 testNormalize = hspec $ do
   describe "Normalize properties" $ do
     it "normalize (normalize x) = normalize x" $ do
-      property (forAll rVarGen (\x -> normalize (normalize  x) == normalize x))
+      property (\x -> normalize (normalize  x) == normalize x)
     it "ignore order" $ do
-      property (forAll rVarListGen ignoreOrder)
-  where ignoreOrder l = let lr = reverse l
-                            m = STVar . Term . A.fromList $ l
+      property ignoreOrder
+  where ignoreOrder m = let l = A.toList . getTerm . getSTVar $ m
+                            lr = reverse l
                             n = STVar . Term . A.fromList $ lr
                             in normalize m == normalize n
-        rVarListGen = map (first getRVar) <$> (arbitrary :: Gen [(RVar, Int)])
-        rVarGen = fmap (STVar . Term . A.fromList) rVarListGen
-
 
 main = sequence [testAmap, testExpr, testNormalize, testNumberOfEquations]
