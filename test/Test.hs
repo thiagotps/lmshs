@@ -1,5 +1,6 @@
 module Main where
 import Test.QuickCheck
+import Test.QuickCheck.Arbitrary.Generic
 import Test.QuickCheck.Checkers
 import Test.QuickCheck.Classes
 import Test.Hspec
@@ -58,6 +59,7 @@ instance Arbitrary RVar where
               in RVar <$> v
 
 
+-- TODO: I should derive it using genericArbitrary
 instance Arbitrary Var where
   arbitrary = Var <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
 
@@ -108,4 +110,14 @@ testNormalize = hspec $ do
                             n = STVar . Term . A.fromList $ lr
                             in normalize m == normalize n
 
-main = sequence [testAmap, testExpr, testNormalize, testNumberOfEquations]
+instance EqProp KernelOutput where
+  (=-=) = eq
+
+instance Arbitrary KernelOutput where
+  arbitrary = genericArbitrary
+
+  -- arbitrary = KernelOutput <$> arbitrary <*> arbitrary <*> arbitrary
+
+testKernelOutput = quickBatch (monoid (mempty :: KernelOutput))
+
+main = sequence [testAmap, testExpr, testNormalize, testKernelOutput, testNumberOfEquations]

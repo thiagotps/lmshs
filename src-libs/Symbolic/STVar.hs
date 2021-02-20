@@ -32,6 +32,7 @@ import Data.Monoid (Product(Product))
 import Debug.Trace (trace)
 import Data.Semigroup (Sum(Sum))
 import Data.Semigroup (Sum(getSum))
+import GHC.Generics (Generic)
 
 newtype STSum = STSum {getSTSum :: Amap STVar Expr} deriving (Eq, Ord, Semigroup, Monoid)
 
@@ -87,7 +88,7 @@ data KernelOutput = KernelOutput
     numberOfLevels :: Int,
     levelSize :: [Int]
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 instance Semigroup KernelOutput where
   (<>) (KernelOutput a1 b1 c1) (KernelOutput a2 b2 c2) = KernelOutput (a1 + a2) (b1 + b2) (c1 ++ c2)
