@@ -1,11 +1,14 @@
 module Main where
 import Test.QuickCheck
+import Test.QuickCheck.Checkers
+import Test.QuickCheck.Classes
 import Test.Hspec
 import Model.Classic
 import Symbolic.STVar
 import Symbolic.Var
 import Symbolic.Term
 import Symbolic.Expr
+import Symbolic.Amap (Amap)
 import qualified Symbolic.Amap as A
 import qualified Data.Map as M
 import Data.Bifunctor (first)
@@ -26,13 +29,20 @@ amapIsNonZeroCounter a b = A.getAMap (n <> m) == resMap
         m = A.fromList b
         resMap = M.filter (/= 0) $ M.fromListWith (+) (a ++ b)
 
-testAmap = hspec $ do
+testAmapHspec = hspec $ do
   describe "Amap properties" $ do
     it "Amap should be a non zero counter" $ do
       property (uncurry amapIsNonZeroCounter)
 
 -- TODO: Test if Amap is actually a monoid
 
+instance (Eq a, Eq b) => EqProp (Amap a b) where
+  (=-=) = eq
+
+testAmapMonoid :: IO ()
+testAmapMonoid = quickBatch (monoid (A.fromList ([] :: [(String, Integer)]) ))
+
+testAmap = testAmapMonoid >> testAmapHspec
 
 
 instance (Ord a, Arbitrary a, Arbitrary b, Num b, Eq b) => Arbitrary (Amap a b) where
@@ -90,7 +100,7 @@ testExpr = hspec $ do
 testNormalize = hspec $ do
   describe "Normalize properties" $ do
     it "normalize (normalize x) = normalize x" $ do
-      property (\x -> normalize (normalize  x) == normalize x)
+      property (forAll rVarGen (\x -> normalize (normalize  x) == normalize x))
     it "ignore order" $ do
       property (forAll rVarListGen ignoreOrder)
   where ignoreOrder l = let lr = reverse l
@@ -98,6 +108,7 @@ testNormalize = hspec $ do
                             n = STVar . Term . A.fromList $ lr
                             in normalize m == normalize n
         rVarListGen = map (first getRVar) <$> (arbitrary :: Gen [(RVar, Int)])
+        rVarGen = fmap (STVar . Term . A.fromList) rVarListGen
 
 
 main = sequence [testAmap, testExpr, testNormalize, testNumberOfEquations]

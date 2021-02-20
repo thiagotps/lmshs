@@ -15,7 +15,7 @@ import Data.Map (Map)
 import qualified Data.Map as M
 
 -- NOTE: Amap stands for Algebra Map.
-newtype Amap a b = Amap {getAMap :: Map a b} deriving (Eq, Ord)
+newtype Amap a b = Amap {getAMap :: Map a b} deriving (Eq, Ord, Show)
 
 instance (Num b, Ord a, Eq b) => (Semigroup (Amap a b)) where
   (<>) (Amap m) (Amap n) = Amap . filterNonZero . M.unionWith (+) m $ n
