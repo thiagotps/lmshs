@@ -1,19 +1,13 @@
 
 module Symbolic.Expr
-  ( Expr (..),
-    Var (..),
-    Term (..),
-    Amap (..),
-    VarType (..),
-    IsExpr,
-    toExpr,
+  ( module Symbolic.Expr,
+    module Symbolic.Term
   )
 where
 
 import qualified Data.List as L
 import Symbolic.Amap (Amap)
 import qualified Symbolic.Amap as A
-import Symbolic.Var
 import Symbolic.Term
 import Data.Map (Map)
 import qualified Data.Map as M

@@ -1,25 +1,8 @@
 -- |
-module Model.Classic
-  ( a,
-    u,
-    xBuilder,
-    vik,
-    isInd,
-    micro,
-    nu,
-    innBuilder,
-    expandFuncBuilder,
-    reduce,
-    buildExpr,
-    runModel,
-  )
-where
+module Model.Classic where
 
 import qualified Symbolic.Amap as A
-import Symbolic.Expr
-import Symbolic.STVar
-import Symbolic.Term
-import Symbolic.Var
+import Symbolic.Kernel
 
 a :: Int -> Var
 a n = defaultVar {name = 'a', index1 = Just n}

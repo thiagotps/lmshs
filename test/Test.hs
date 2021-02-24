@@ -5,10 +5,7 @@ import Test.QuickCheck.Checkers
 import Test.QuickCheck.Classes
 import Test.Hspec
 import Model.Classic
-import Symbolic.STVar
-import Symbolic.Var
-import Symbolic.Term
-import Symbolic.Expr
+import Symbolic.Kernel
 import Symbolic.Amap (Amap)
 import qualified Symbolic.Amap as A
 import qualified Data.Map as M

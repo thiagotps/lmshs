@@ -1,9 +1,8 @@
 
 -- |
 module Symbolic.Term
-  ( Term (..),
-    IsTerm,
-    toTerm
+  ( module Symbolic.Term,
+    module Symbolic.Var
   )
 where
 
