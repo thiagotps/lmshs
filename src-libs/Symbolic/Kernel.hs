@@ -1,5 +1,6 @@
 -- | 
 
+{-# LANGUAGE RecordWildCards #-}
 module Symbolic.Kernel
   ( module Symbolic.Kernel,
     module Symbolic.STVar,
@@ -16,34 +17,49 @@ import Data.Semigroup ( Sum(Sum), Sum(getSum) )
 import GHC.Generics (Generic)
 
 import qualified Symbolic.Amap as A
+import Data.Maybe (isJust, fromJust, isNothing)
+import Data.List (partition)
+import Control.Applicative (liftA2)
+import Debug.Trace (trace)
 
 
 type IndFunc = Var -> Var -> Bool
 type ExpandFunc = Var -> Expr
-type RVReduceFunc = (Var, Int) -> Expr
+type ReduceFunc = (Var, Int) -> Maybe Expr
 
-indReduce :: IndFunc -> RVReduceFunc -> Term -> (STVar, Expr)
-indReduce i f (Term m) = let (term, Product expr) = getInd rvList
-                         in  (STVar term, cntExpr * expr)
-  where getInd :: [(Var, Int)] -> (Term, Product Expr)
-        getInd [] = (mempty, mempty)
-        getInd [a] = let r = f a in if r == (toExpr . toTerm $ a) then (toTerm a, mempty) else (mempty, Product r)
-        getInd (a@(v, _) : as) = (if isIndFromOthers v then (mempty, Product (f a)) else (toTerm a, mempty)) <> getInd as
-        isIndFromOthers v = all (i v) . filter (/= v) . map fst $ rvList
-        cntList = filter ((Cnt ==) . getType) . A.toList $ m
-        cntExpr = toExpr . foldMap toTerm $ cntList
-        rvList = filter ((RV ==) . getType) . A.toList $ m
-        getType = varType . fst
+data KernelConfig = KernelConfig
+  { indF :: IndFunc,
+    expandF :: ExpandFunc,
+    reduceF :: ReduceFunc
+  }
 
-collectFromExpr :: IndFunc -> RVReduceFunc -> Expr -> [STVar]
-collectFromExpr i f (Expr m) = filter (/= mempty) . A.toListKeys .  getSTSum $  s
-    where s = mconcat [STSum (A.singleton stVar (expr * fromIntegral n)) | (t, n) <- A.toList m, let (stVar, expr) = reduce t]
-          reduce = indReduce i f
+splitInd :: KernelConfig -> [(Var, Int)] -> (Term, Expr)
+splitInd KernelConfig{..} rvList =  (term, expr)
+  where isIndFromOthers v = all (indF v) . filter (/= v) . map fst $ rvList
+        isReducible v = isJust . reduceF $ (v, 1)
+        (l, r) = partition (\(x, _) -> isIndFromOthers x && isReducible x) rvList
+        expr = product . map (fromJust . reduceF) $ l
+        term = toTerm r
 
-expand :: STVar -> ExpandFunc -> IndFunc -> RVReduceFunc -> [STVar]
-expand v@(STVar (Term m)) e i f = collectFromExpr i f s
+reduceTerm :: KernelConfig -> Term -> STSum
+reduceTerm c (Term m) = STSum $ A.singleton (STVar term) (expr * cntExpr)
+  where varType' pair = varType $ fst pair
+        pairList = A.toList m
+        rvList = filter (\x -> varType' x == RV) pairList
+        cntList = filter (\x -> varType' x == Cnt) pairList
+        (term, expr) = splitInd c rvList
+        cntExpr =  toExpr . toTerm $ rvList
+
+collectFromExpr :: KernelConfig -> Expr -> [STVar]
+collectFromExpr config  (Expr m) = filter (/= mempty) . A.toListKeys .  getSTSum $  s
+    where s = mconcat [mulSTSum (reduce t) n | (t, n) <- A.toList m]
+          reduce = reduceTerm config
+          mulSTSum (STSum m) n = STSum . A.map (* fromIntegral n) $ m
+
+expand :: KernelConfig -> STVar -> [STVar]
+expand config@KernelConfig{..} v@(STVar (Term m))  = collectFromExpr config s
   where
-    s = product [e x ^ a | (x, a) <- A.toList m]
+    s = product [expandF x ^ a | (x, a) <- A.toList m]
 
 normalize :: STVar -> STVar
 normalize (STVar (Term t)) = STVar . Term . A.mapKey subIndex $ t
@@ -67,15 +83,15 @@ instance Semigroup KernelOutput where
 instance Monoid KernelOutput where
   mempty = KernelOutput 0 0 []
 
-kernel :: [STVar] -> ExpandFunc -> IndFunc -> RVReduceFunc -> KernelOutput
-kernel rootList e i f = go (S.fromList . map normalize $ rootList) S.empty
+kernel :: KernelConfig -> [STVar]   -> KernelOutput
+kernel config rootList  = go (S.fromList . map normalize $ rootList) S.empty
   where
     go :: Set STVar -> Set STVar -> KernelOutput
     go visitSet seen | S.null visitSet = mempty
                      | otherwise = KernelOutput (length visitList) 1 [length visitList] <> go (neighSet `S.difference` seen') seen'
-                    where neighSet = S.fromList . map normalize . concatMap (\v -> expand v e i f) $ visitList
+                    where neighSet = S.fromList . map normalize . concatMap (expand config) $ visitList
                           visitList = S.toList visitSet
                           seen' = seen <> visitSet
 
-kernelExpr :: Expr -> ExpandFunc -> IndFunc -> RVReduceFunc ->  KernelOutput
-kernelExpr expr e i f = kernel (collectFromExpr i f expr) e i f
+kernelExpr :: KernelConfig -> Expr -> KernelOutput
+kernelExpr = liftA2 (.) kernel collectFromExpr

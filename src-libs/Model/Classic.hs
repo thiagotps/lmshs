@@ -61,14 +61,14 @@ expandFuncBuilder filterLenght dataLenght = expandFunc
     innSum = innBuilder filterLenght dataLenght
     x = xBuilder dataLenght
 
-reduce :: RVReduceFunc
+reduce :: ReduceFunc
 reduce (Var {name = 'u'}, n)
-  | odd n = 0
-  | otherwise = toExpr defaultVar {name = 'γ', index1 = Just n}
+  | odd n = Just 0
+  | otherwise = Just $ toExpr defaultVar {name = 'γ', index1 = Just n}
 reduce (Var {name = 'n'}, n)
-  | odd n = 0
-  | otherwise = toExpr defaultVar {name = 'σ'} ^ n
-reduce (v, n) = toExpr v ^ n
+  | odd n = Just 0
+  | otherwise = Just $ toExpr defaultVar {name = 'σ'} ^ n
+reduce _ = Nothing
 
 buildExpr :: FilterLenght -> DataLenght -> Expr
 buildExpr filterLenght dataLenght = inn ^ 2
@@ -77,7 +77,8 @@ buildExpr filterLenght dataLenght = inn ^ 2
     innSum = innBuilder filterLenght dataLenght
 
 runModel :: FilterLenght -> DataLenght -> KernelOutput
-runModel filterLenght dataLenght = kernelExpr finalExpr expandFunc isInd reduce
+runModel filterLenght dataLenght = kernelExpr config finalExpr
   where
     finalExpr = buildExpr filterLenght dataLenght
     expandFunc = expandFuncBuilder filterLenght dataLenght
+    config = KernelConfig{indF=isInd, reduceF=reduce, expandF=expandFunc}

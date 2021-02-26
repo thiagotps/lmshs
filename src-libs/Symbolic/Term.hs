@@ -28,3 +28,6 @@ instance IsTerm Var where
 
 instance IsTerm (Var, Int) where
   toTerm (v, n) = Term (A.singleton v n)
+
+instance IsTerm [(Var, Int)] where
+  toTerm = foldMap toTerm
