@@ -76,9 +76,14 @@ buildExpr filterLenght dataLenght = inn ^ 2
     inn = innSum 0
     innSum = innBuilder filterLenght dataLenght
 
+buildConfig :: FilterLenght -> DataLenght -> KernelConfig
+buildConfig filterLenght dataLenght =
+  KernelConfig{indF=isInd, reduceF=reduce, expandF=expandFunc}
+  where
+    expandFunc = expandFuncBuilder filterLenght dataLenght
+
 runModel :: FilterLenght -> DataLenght -> KernelOutput
 runModel filterLenght dataLenght = kernelExpr config finalExpr
   where
     finalExpr = buildExpr filterLenght dataLenght
-    expandFunc = expandFuncBuilder filterLenght dataLenght
-    config = KernelConfig{indF=isInd, reduceF=reduce, expandF=expandFunc}
+    config = buildConfig filterLenght dataLenght
