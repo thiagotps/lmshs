@@ -6,11 +6,13 @@ module Symbolic.Term
   )
 where
 
+import Data.Hashable (Hashable)
+
 import Symbolic.Amap (Amap)
 import qualified Symbolic.Amap as A
 import Symbolic.Var
 
-newtype Term = Term {getTerm :: Amap Var Int} deriving (Eq, Ord, Semigroup, Monoid)
+newtype Term = Term {getTerm :: Amap Var Int} deriving (Eq, Ord, Semigroup, Monoid, Hashable)
 
 instance Show Term where
   show (Term m) = concat [fromPair v p | (v, p) <- A.toList m]

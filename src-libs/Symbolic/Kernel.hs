@@ -63,7 +63,7 @@ expand config@KernelConfig{..} v@(STVar (Term m))  = collectFromExpr config s
 
 normalize :: STVar -> STVar
 normalize (STVar (Term t)) = STVar . Term . A.mapKey subIndex $ t
-  where cnt = case index2 . fst . head . A.toList $ t of
+  where cnt = case index2 . fst . minimum . A.toList $ t of
               Nothing -> error "Index2 must exist in normalization"
               Just n -> n
         subIndex :: Var -> Var

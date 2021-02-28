@@ -5,6 +5,8 @@ module Symbolic.Expr
   )
 where
 
+import Data.Hashable (Hashable)
+
 import qualified Data.List as L
 import Symbolic.Amap (Amap)
 import qualified Symbolic.Amap as A
@@ -12,7 +14,7 @@ import Symbolic.Term
 import Data.Map (Map)
 import qualified Data.Map as M
 
-newtype Expr = Expr {getExpr :: Amap Term Int} deriving (Eq, Ord, Semigroup, Monoid)
+newtype Expr = Expr {getExpr :: Amap Term Int} deriving (Eq, Ord, Semigroup, Monoid, Hashable)
 
 instance Num Expr where
   (+) m n = m <> n

@@ -8,9 +8,10 @@ import Model.Classic
 import Symbolic.Kernel
 import Symbolic.Amap (Amap)
 import qualified Symbolic.Amap as A
-import qualified Data.Map as M
+import qualified Data.HashMap.Strict as M
 import Data.Bifunctor (first)
 import Data.Maybe (isJust)
+import Data.Hashable (Hashable)
 
 testNumberOfEquations = hspec $
   describe "Number Of Equations"  $ do
@@ -44,7 +45,7 @@ testAmapMonoid = quickBatch (monoid (A.fromList ([] :: [(String, Integer)]) ))
 testAmap = testAmapMonoid >> testAmapHspec
 
 
-instance (Ord a, Arbitrary a, Arbitrary b, Num b, Eq b) => Arbitrary (Amap a b) where
+instance (Hashable a, Arbitrary a, Arbitrary b, Num b, Eq b, Eq a) => Arbitrary (Amap a b) where
   arbitrary = A.fromList <$> arbitrary
 
 

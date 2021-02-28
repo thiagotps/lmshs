@@ -5,14 +5,16 @@ module Symbolic.STVar
   )
 where
 
+import Data.Hashable (Hashable)
+
 import qualified Data.List as L
 import Symbolic.Expr
 import Symbolic.Amap (Amap)
 import qualified Symbolic.Amap as A
 
-newtype STSum = STSum {getSTSum :: Amap STVar Expr} deriving (Eq, Ord, Semigroup, Monoid)
+newtype STSum = STSum {getSTSum :: Amap STVar Expr} deriving (Eq, Ord, Semigroup, Monoid, Hashable)
 
-newtype STVar = STVar {getSTVar :: Term} deriving (Eq, Ord, Semigroup, Monoid)
+newtype STVar = STVar {getSTVar :: Term} deriving (Eq, Ord, Semigroup, Monoid, Hashable)
 
 instance Show STVar where
   show (STVar t) = "E[" ++ show t ++ "]"
