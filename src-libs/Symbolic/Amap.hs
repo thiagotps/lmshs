@@ -11,8 +11,8 @@ module Symbolic.Amap
   )
 where
 
-import Data.Map (Map)
-import qualified Data.Map as M
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as M
 
 -- NOTE: Amap stands for Algebra Map.
 newtype Amap a b = Amap {getAMap :: Map a b} deriving (Eq, Ord, Show)

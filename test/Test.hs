@@ -8,7 +8,7 @@ import Model.Classic
 import Symbolic.Kernel
 import Symbolic.Amap (Amap)
 import qualified Symbolic.Amap as A
-import qualified Data.Map as M
+import qualified Data.Map.Strict as M
 import Data.Bifunctor (first)
 import Data.Maybe (isJust)
 
