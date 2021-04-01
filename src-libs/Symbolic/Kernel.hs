@@ -15,6 +15,7 @@ import qualified Data.Map as M
 import Data.Monoid (Product(Product))
 import Data.Semigroup ( Sum(Sum), Sum(getSum) )
 import GHC.Generics (Generic)
+import Control.Parallel.Strategies
 
 import qualified Symbolic.Amap as A
 import Data.Maybe (isJust, fromJust, isNothing)
@@ -83,13 +84,29 @@ instance Semigroup KernelOutput where
 instance Monoid KernelOutput where
   mempty = KernelOutput 0 0 []
 
+divideList :: Int -> [a] -> [[a]]
+divideList n l = let (a:as) = go n l
+                     b = last as
+                  in (a ++ b) : init as
+  where s = length l
+        q = s `div` n
+        go 0 list = [list]
+        go n list = let (f,fs) = splitAt q list
+                    in f : go (n - 1) fs
+
 kernel :: KernelConfig -> [STVar]   -> KernelOutput
 kernel config rootList  = go (S.fromList . map normalize $ rootList) S.empty
   where
     go :: Set STVar -> Set STVar -> KernelOutput
     go visitSet seen | S.null visitSet = mempty
-                     | otherwise = KernelOutput (length visitList) 1 [length visitList] <> go (neighSet `S.difference` seen') seen'
-                    where neighSet = S.fromList . map normalize . concatMap (expand config) $ visitList
+                     | otherwise = KernelOutput (length visitList) 1 [length visitList] <> go neighSetBetter seen'
+                    where neighSet2 = S.fromList . map normalize . concatMap (expand config) $ visitList
+                          neighSetBetter = runEval $ do
+                            let l = divideList 16 visitList
+                            ress <- mapM (rpar . transformFunc)  l
+                            return (mconcat ress)
+                          transformFunc list = let neigh = S.fromList . map normalize . concatMap (expand config) $ list
+                                                   in S.difference neigh seen'
                           visitList = S.toList visitSet
                           seen' = seen <> visitSet
 
