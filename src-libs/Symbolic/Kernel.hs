@@ -100,7 +100,7 @@ kernel config rootList  = go (S.fromList . map normalize $ rootList) S.empty
     go :: Set STVar -> Set STVar -> KernelOutput
     go visitSet seen | S.null visitSet = mempty
                      | otherwise = KernelOutput (length visitList) 1 [length visitList] <> go neighSetBetter seen'
-                    where neighSet2 = S.fromList . map normalize . concatMap (expand config) $ visitList
+                    where neighSet2 = S.fromList . map normalize . concatMap (expand config) $ visitList -- TODO: Remove this!
                           neighSetBetter = runEval $ do
                             let l = divideList 16 visitList
                             ress <- mapM (rpar . transformFunc)  l
