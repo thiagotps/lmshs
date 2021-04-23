@@ -59,7 +59,7 @@ library
     hs-source-dirs: src-libs
     -- NOTE: no explicit constraints on base needed
     --       as they're inherited from the 'library' stanza
-    build-depends: base ^>=4.13.0.0 ||  ^>= 4.12.0.0, containers, parallel
+    build-depends: base ^>=4.13.0.0 ||  ^>= 4.12.0.0, containers, parallel, mtl
     default-extensions: GeneralizedNewtypeDeriving, DeriveGeneric, FlexibleInstances
     default-language:    Haskell2010
 
@@ -75,7 +75,7 @@ executable lmshs
   --other-extensions:
 
   -- Other library packages from which modules are imported.
-  build-depends:       base ^>=4.13.0.0 ||  ^>= 4.12.0.0, lmshs
+  build-depends:       base ^>=4.13.0.0 ||  ^>= 4.12.0.0, lmshs, mtl
 
   -- Directories containing source files.
   hs-source-dirs:   src-exe

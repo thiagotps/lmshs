@@ -23,6 +23,9 @@ import Data.List (partition)
 import Control.Applicative (liftA2)
 import Debug.Trace (trace)
 
+import Control.Monad
+import Control.Monad.RWS
+
 
 type IndFunc = Var -> Var -> Bool
 type ExpandFunc = Var -> Expr
@@ -94,6 +97,45 @@ divideList n l = let (a:as) = go n l
         go n list = let (f,fs) = splitAt q list
                     in f : go (n - 1) fs
 
+
+
+type RS r s  = RWS r () s
+runRS :: RS r s a -> r -> s -> (s, a)
+runRS m r s = let (a, s', _) = runRWS m r s in (s', a)
+
+kernel2 :: KernelConfig -> [STVar] -> KernelOutput
+kernel2 config rootList = snd $ runRS go (S.fromList . map normalize $ rootList, S.empty) ()
+  where
+    go :: RS (Set STVar, Set STVar) () KernelOutput
+    go = do
+      (visit, seen) <- ask
+      if S.null visit
+        then return mempty
+        else do
+          let newSeen = seen <> visit
+          let transform list = let a = S.fromList . map normalize . foldMap (expand config) $ list
+                                   in a S.\\ newSeen
+          let neigh = runEval $ do
+                let l = divide 4 visit
+                res <- mapM (rpar . transform) l
+                return . mconcat $ res
+
+          let newNeigh = neigh S.\\ newSeen
+
+          let visitLength = length visit
+          let thisOut =  KernelOutput visitLength 1 [visitLength]
+
+          (thisOut <>) <$> local (const (newNeigh, newSeen)) go
+
+divide :: (Ord a) => Int -> Set a -> [Set a]
+divide n s =  f (intLog2 n)
+  where f n | n == 0 = [s]
+            | otherwise = do
+                ss <- f (n - 1)
+                let (a,b) = S.splitAt (length ss `div` 2) ss
+                [a,b]
+        intLog2 = floor . logBase 2 . fromIntegral
+
 kernel :: KernelConfig -> [STVar]   -> KernelOutput
 kernel config rootList  = go (S.fromList . map normalize $ rootList) S.empty
   where
@@ -111,4 +153,4 @@ kernel config rootList  = go (S.fromList . map normalize $ rootList) S.empty
                           seen' = seen <> visitSet
 
 kernelExpr :: KernelConfig -> Expr -> KernelOutput
-kernelExpr = liftA2 (.) kernel collectFromExpr
+kernelExpr = liftA2 (.) kernel2 collectFromExpr
