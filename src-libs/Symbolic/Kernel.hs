@@ -87,32 +87,23 @@ instance Semigroup KernelOutput where
 instance Monoid KernelOutput where
   mempty = KernelOutput 0 0 []
 
-divideList :: Int -> [a] -> [[a]]
-divideList n l = let (a:as) = go n l
-                     b = last as
-                  in (a ++ b) : init as
-  where s = length l
-        q = s `div` n
-        go 0 list = [list]
-        go n list = let (f,fs) = splitAt q list
-                    in f : go (n - 1) fs
-
-
-
 type RS r s  = RWS r () s
 runRS :: RS r s a -> r -> s -> (s, a)
 runRS m r s = let (a, s', _) = runRWS m r s in (s', a)
 
 kernel2 :: KernelConfig -> [STVar] -> KernelOutput
-kernel2 config rootList = snd $ runRS go (S.fromList . map normalize $ rootList, S.empty) ()
+kernel2 config rootList = snd $ runRS go (S.fromList . map normalize $ rootList) (M.empty, 0)
   where
-    go :: RS (Set STVar, Set STVar) () KernelOutput
+    go :: RS (Set STVar) (Map STVar Int, Int) KernelOutput
     go = do
-      (visit, seen) <- ask
+      visit <- ask
+
       if S.null visit
         then return mempty
         else do
-          let newSeen = seen <> visit
+          forM_ visit $ \v -> modify (\(m, p) -> (M.insert v p m, p + 1))
+          newSeen <- gets (\(m, _) -> M.keysSet m)
+
           let transform list = let a = S.fromList . map normalize . foldMap (expand config) $ list
                                    in a S.\\ newSeen
           let neigh = runEval $ do
@@ -125,7 +116,7 @@ kernel2 config rootList = snd $ runRS go (S.fromList . map normalize $ rootList,
           let visitLength = length visit
           let thisOut =  KernelOutput visitLength 1 [visitLength]
 
-          (thisOut <>) <$> local (const (newNeigh, newSeen)) go
+          (thisOut <>) <$> local (const newNeigh) go
 
 divide :: (Ord a) => Int -> Set a -> [Set a]
 divide n s =  f (intLog2 n)
@@ -136,21 +127,6 @@ divide n s =  f (intLog2 n)
                 [a,b]
         intLog2 = floor . logBase 2 . fromIntegral
 
-kernel :: KernelConfig -> [STVar]   -> KernelOutput
-kernel config rootList  = go (S.fromList . map normalize $ rootList) S.empty
-  where
-    go :: Set STVar -> Set STVar -> KernelOutput
-    go visitSet seen | S.null visitSet = mempty
-                     | otherwise = KernelOutput (length visitList) 1 [length visitList] <> go neighSetBetter seen'
-                    where neighSet2 = S.fromList . map normalize . concatMap (expand config) $ visitList -- TODO: Remove this!
-                          neighSetBetter = runEval $ do
-                            let l = divideList 16 visitList
-                            ress <- mapM (rpar . transformFunc)  l
-                            return (mconcat ress)
-                          transformFunc list = let neigh = S.fromList . map normalize . concatMap (expand config) $ list
-                                                   in S.difference neigh seen'
-                          visitList = S.toList visitSet
-                          seen' = seen <> visitSet
 
 kernelExpr :: KernelConfig -> Expr -> KernelOutput
 kernelExpr = liftA2 (.) kernel2 collectFromExpr
