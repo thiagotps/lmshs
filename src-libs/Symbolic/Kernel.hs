@@ -25,16 +25,19 @@ import Debug.Trace (trace)
 
 import Control.Monad
 import Control.Monad.RWS
+import Data.Bifunctor (second, first)
 
 
 type IndFunc = Var -> Var -> Bool
 type ExpandFunc = Var -> Expr
 type ReduceFunc = (Var, Int) -> Maybe Expr
+type NumericExpandFunc = Var -> Double
 
 data KernelConfig = KernelConfig
   { indF :: IndFunc,
     expandF :: ExpandFunc,
-    reduceF :: ReduceFunc
+    reduceF :: ReduceFunc,
+    numericExpandF :: NumericExpandFunc
   }
 
 splitInd :: KernelConfig -> [(Var, Int)] -> (Term, Expr)
@@ -54,13 +57,20 @@ reduceTerm c (Term m) = STSum $ A.singleton (STVar term) (expr * cntExpr)
         (term, expr) = splitInd c rvList
         cntExpr =  toExpr . toTerm $ rvList
 
-collectFromExpr :: KernelConfig -> Expr -> [STVar]
-collectFromExpr config  (Expr m) = filter (/= mempty) . A.toListKeys .  getSTSum $  s
-    where s = mconcat [mulSTSum (reduce t) n | (t, n) <- A.toList m]
-          reduce = reduceTerm config
-          mulSTSum (STSum m) n = STSum . A.map (* fromIntegral n) $ m
+term2Double :: (Var -> Double) -> Term -> Double
+term2Double f t = sum [f v ^ n | (v, n) <- A.toList . getTerm $ t]
 
-expand :: KernelConfig -> STVar -> [STVar]
+expr2Double :: (Var -> Double) -> Expr -> Double
+expr2Double f e = sum [term2Double f t * fromIntegral n | (t, n) <- A.toList . getExpr $ e]
+
+collectFromExpr :: KernelConfig -> Expr -> [(STVar, Double)]
+collectFromExpr config@KernelConfig {numericExpandF = f} (Expr m) = second (expr2Double f) <$> (A.toList . getSTSum $ s)
+  where
+    s = mconcat [mulSTSum (reduce t) n | (t, n) <- A.toList m]
+    reduce = reduceTerm config
+    mulSTSum (STSum m) n = STSum . A.map (* fromIntegral n) $ m
+
+expand :: KernelConfig -> STVar -> [(STVar, Double)]
 expand config@KernelConfig{..} v@(STVar (Term m))  = collectFromExpr config s
   where
     s = product [expandF x ^ a | (x, a) <- A.toList m]
@@ -91,27 +101,34 @@ type RS r s  = RWS r () s
 runRS :: RS r s a -> r -> s -> (s, a)
 runRS m r s = let (a, s', _) = runRWS m r s in (s', a)
 
-kernel2 :: KernelConfig -> [STVar] -> KernelOutput
-kernel2 config rootList = snd $ runRS go (S.fromList . map normalize $ rootList) (M.empty, 0)
+kernel :: KernelConfig -> [STVar] -> KernelOutput
+kernel config rootList = snd $ runRS go (S.fromList . map normalize $ rootList) M.empty
   where
-    go :: RS (Set STVar) (Map STVar Int, Int) KernelOutput
+    go :: RS (Set STVar) (Map STVar (Map STVar Double)) KernelOutput
     go = do
       visit <- ask
+      seen <- gets M.keysSet
 
       if S.null visit
         then return mempty
         else do
-          forM_ visit $ \v -> modify (\(m, p) -> (M.insert v p m, p + 1))
-          newSeen <- gets (\(m, _) -> M.keysSet m)
+          let newSeen = seen <> visit
 
-          let transform list = let a = S.fromList . map normalize . foldMap (expand config) $ list
-                                   in a S.\\ newSeen
-          let neigh = runEval $ do
+          let transform visitSet = mconcat $ do
+                v <- S.toList visitSet
+                let r = first normalize <$> expand config v
+                let s = S.fromList . filter (/= mempty) . map fst $ r
+                let m = M.fromList r
+                return (s S.\\ newSeen, M.singleton v m)
+
+          -- let transform visitSet = let a = S.fromList . map normalize . foldMap (expand config) $ visitSet
+          --                          in a S.\\ newSeen
+          let (newNeigh, partialStMap) = runEval $ do
                 let l = divide 4 visit
-                res <- mapM (rpar . transform) l
-                return . mconcat $ res
+                (a, b) <- mconcat <$> mapM (rpar . transform) l
+                return  (a, b)
 
-          let newNeigh = neigh S.\\ newSeen
+          modify (partialStMap <>)
 
           let visitLength = length visit
           let thisOut =  KernelOutput visitLength 1 [visitLength]
@@ -129,4 +146,4 @@ divide n s =  f (intLog2 n)
 
 
 kernelExpr :: KernelConfig -> Expr -> KernelOutput
-kernelExpr = liftA2 (.) kernel2 collectFromExpr
+kernelExpr config expr = kernel config $ fst <$> collectFromExpr config expr

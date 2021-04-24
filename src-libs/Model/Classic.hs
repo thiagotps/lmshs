@@ -78,7 +78,7 @@ buildExpr filterLenght dataLenght = inn ^ 2
 
 buildConfig :: FilterLenght -> DataLenght -> KernelConfig
 buildConfig filterLenght dataLenght =
-  KernelConfig{indF=isInd, reduceF=reduce, expandF=expandFunc}
+  KernelConfig{indF=isInd, reduceF=reduce, expandF=expandFunc, numericExpandF=const 1}
   where
     expandFunc = expandFuncBuilder filterLenght dataLenght
 
