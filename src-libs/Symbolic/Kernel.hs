@@ -1,6 +1,7 @@
 -- | 
 
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 module Symbolic.Kernel
   ( module Symbolic.Kernel,
     module Symbolic.STVar,
@@ -10,7 +11,7 @@ where
 import Symbolic.STVar
 import Data.Set (Set)
 import qualified Data.Set as S
-import Data.Map (Map)
+import Data.Map (Map, (!), (!?))
 import qualified Data.Map as M
 import Data.Monoid (Product(Product))
 import Data.Semigroup ( Sum(Sum), Sum(getSum) )
@@ -18,7 +19,7 @@ import GHC.Generics (Generic)
 import Control.Parallel.Strategies
 
 import qualified Symbolic.Amap as A
-import Data.Maybe (isJust, fromJust, isNothing)
+import Data.Maybe (isJust, fromJust, isNothing, fromMaybe)
 import Data.List (partition)
 import Control.Applicative (liftA2)
 import Debug.Trace (trace)
@@ -26,6 +27,9 @@ import Debug.Trace (trace)
 import Control.Monad
 import Control.Monad.RWS
 import Data.Bifunctor (second, first)
+import Numeric.LinearAlgebra (Matrix)
+import qualified Numeric.LinearAlgebra as N
+import Numeric.LinearAlgebra.Data (build, Vector)
 
 
 type IndFunc = Var -> Var -> Bool
@@ -84,27 +88,53 @@ normalize (STVar (Term t)) = STVar . Term . A.mapKey subIndex $ t
         subIndex v@Var{index2=Just n} = v{index2=Just (n - cnt)}
 
 
-data KernelOutput = KernelOutput
-  { numberOfEqs :: Int,
-    numberOfLevels :: Int,
-    levelSize :: [Int]
-  }
-  deriving (Eq, Show, Generic)
-
-instance Semigroup KernelOutput where
-  (<>) (KernelOutput a1 b1 c1) (KernelOutput a2 b2 c2) = KernelOutput (a1 + a2) (b1 + b2) (c1 ++ c2)
-
-instance Monoid KernelOutput where
-  mempty = KernelOutput 0 0 []
-
 type RS r s  = RWS r () s
 runRS :: RS r s a -> r -> s -> (s, a)
 runRS m r s = let (a, s', _) = runRWS m r s in (s', a)
 
-kernel :: KernelConfig -> [STVar] -> KernelOutput
-kernel config rootList = snd $ runRS go (S.fromList . map normalize $ rootList) M.empty
+data KernelOutput = KernelOutput
+  {
+    levelSize :: [Int],
+    stateVarList :: [STVar],
+    matrixA :: Matrix Double,
+    vectorB :: Vector Double
+  } deriving (Eq, Show, Generic)
+
+buildY0Vector :: [STVar] -> Vector Double
+buildY0Vector = undefined
+
+-- TODO: Improve this implementation
+buildMatrix :: Map STVar (Map STVar Double) -> KernelOutput
+buildMatrix m =
+  KernelOutput
+    { levelSize = [],
+      stateVarList = vars,
+      matrixA = build (n, n) f,
+      vectorB = build n g
+    }
   where
-    go :: RS (Set STVar) (Map STVar (Map STVar Double)) KernelOutput
+    vars = M.keys m
+    n = length vars
+    vars2num = M.fromList $ zip vars [0 ..]
+    num2vars = M.fromList $ zip [0 ..] vars
+    f i j =
+      let va = num2vars ! i
+          vb = num2vars ! j
+          maybeDouble = (m ! va) !? vb
+       in fromMaybe 0 maybeDouble
+    g i =
+      let va = num2vars ! i
+          maybeDouble = (m ! va) !? mempty
+       in fromMaybe 0 maybeDouble
+
+
+kernel :: KernelConfig -> [STVar] -> KernelOutput
+kernel config rootList =
+  let (s, l) = runRS go (S.fromList . map normalize $ rootList) M.empty
+      out = buildMatrix s
+   in out {levelSize = l}
+  where
+    go :: RS (Set STVar) (Map STVar (Map STVar Double)) [Int]
     go = do
       visit <- ask
       seen <- gets M.keysSet
@@ -121,19 +151,14 @@ kernel config rootList = snd $ runRS go (S.fromList . map normalize $ rootList) 
                 let m = M.fromList r
                 return (s S.\\ newSeen, M.singleton v m)
 
-          -- let transform visitSet = let a = S.fromList . map normalize . foldMap (expand config) $ visitSet
-          --                          in a S.\\ newSeen
           let (newNeigh, partialStMap) = runEval $ do
                 let l = divide 4 visit
                 (a, b) <- mconcat <$> mapM (rpar . transform) l
-                return  (a, b)
+                return (a, b)
 
           modify (partialStMap <>)
+          (length visit :) <$> local (const newNeigh) go
 
-          let visitLength = length visit
-          let thisOut =  KernelOutput visitLength 1 [visitLength]
-
-          (thisOut <>) <$> local (const newNeigh) go
 
 divide :: (Ord a) => Int -> Set a -> [Set a]
 divide n s =  f (intLog2 n)
