@@ -12,7 +12,7 @@ u n = defaultVar {name = 'u', index2 = Just n, varType = RV}
 
 type DataLenght = Int
 
-xBuilder :: DataLenght -> Int -> ExprInt
+xBuilder :: DataLenght -> Int -> Expr
 xBuilder dataLenght = x
   where
     x n = sum [toExpr (a i) * toExpr (u (n - i)) | i <- [0 .. (dataLenght - 1)]]
@@ -40,10 +40,10 @@ nu n = toExpr defaultVar {varType = RV, name = 'n', index2 = Just n}
 
 type FilterLenght = Int
 
-innBuilder :: FilterLenght -> DataLenght -> Int -> ExprInt
+innBuilder :: FilterLenght -> DataLenght -> Int -> Expr
 innBuilder filterLenght dataLenght = innSum
   where
-    innSum :: Int -> ExprInt
+    innSum :: Int -> Expr
     innSum n = sum [x (n - j) * toExpr (vik j n) | j <- [0 .. filterLenght - 1]]
     x = xBuilder dataLenght
 
@@ -70,7 +70,7 @@ reduce (Var {name = 'n'}, n)
   | otherwise = Just $ toExpr defaultVar {name = 'σ'} ^ n
 reduce _ = Nothing
 
-buildExpr :: FilterLenght -> DataLenght -> ExprInt
+buildExpr :: FilterLenght -> DataLenght -> Expr
 buildExpr filterLenght dataLenght = inn ^ 2
   where
     inn = innSum 0

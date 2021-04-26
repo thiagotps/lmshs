@@ -1,4 +1,4 @@
-{-# LANGUAGE FunctionalDependencies #-}
+
 module Symbolic.Expr
   ( module Symbolic.Expr,
     module Symbolic.Term
@@ -12,12 +12,9 @@ import Symbolic.Term
 import Data.Map (Map)
 import qualified Data.Map as M
 
-newtype Expr a = Expr {getExpr :: Amap Term a} deriving (Eq, Ord, Semigroup, Monoid)
+newtype Expr = Expr {getExpr :: Amap Term Int} deriving (Eq, Ord, Semigroup, Monoid)
 
-type ExprInt = Expr Int
-type ExprDouble = Expr Double
-
-instance (Num a, Eq a) => Num (Expr a) where
+instance Num Expr where
   (+) m n = m <> n
 
   -- TODO: I think that it can be improved using fromListWith
@@ -29,7 +26,7 @@ instance (Num a, Eq a) => Num (Expr a) where
   fromInteger = Expr . A.singleton mempty . fromInteger
   negate (Expr m) = Expr . A.map negate $  m
 
-instance (Num a, Eq a, Show a) => Show (Expr a) where
+instance Show Expr where
   show (Expr m) = L.intercalate " + " $ [showPair cnt mul | (mul, cnt) <- A.toList m]
     where
       showPair cnt mul
@@ -37,17 +34,17 @@ instance (Num a, Eq a, Show a) => Show (Expr a) where
         | cnt == 1 = show mul
         | otherwise = show cnt ++ "*" ++ show mul
 
-class IsExpr a b  where
-  toExpr :: a -> Expr b
+class IsExpr a where
+  toExpr :: a -> Expr
 
-instance Num a => IsExpr (Expr a) a where
+instance IsExpr Expr where
   toExpr = id
 
-instance (Num b, Eq b) => IsExpr Term b where
+instance IsExpr Term where
   toExpr t = Expr (A.singleton t 1)
 
-instance IsExpr (Term, Int) Int where
+instance IsExpr (Term, Int) where
   toExpr (t, n) = Expr (A.singleton t n)
 
-instance (Num b, Eq b) => IsExpr Var b where
+instance IsExpr Var where
   toExpr = toExpr . toTerm

@@ -25,8 +25,8 @@ import Debug.Trace (trace)
 
 
 type IndFunc = Var -> Var -> Bool
-type ExpandFunc = Var -> ExprInt
-type ReduceFunc = (Var, Int) -> Maybe ExprInt
+type ExpandFunc = Var -> Expr
+type ReduceFunc = (Var, Int) -> Maybe Expr
 
 data KernelConfig = KernelConfig
   { indF :: IndFunc,
@@ -34,7 +34,7 @@ data KernelConfig = KernelConfig
     reduceF :: ReduceFunc
   }
 
-splitInd :: KernelConfig -> [(Var, Int)] -> (Term, ExprInt)
+splitInd :: KernelConfig -> [(Var, Int)] -> (Term, Expr)
 splitInd KernelConfig{..} rvList =  (term, expr)
   where isIndFromOthers v = all (indF v) . filter (/= v) . map fst $ rvList
         isReducible v = isJust . reduceF $ (v, 1)
@@ -42,7 +42,7 @@ splitInd KernelConfig{..} rvList =  (term, expr)
         expr = product . map (fromJust . reduceF) $ l
         term = toTerm r
 
-reduceTerm :: KernelConfig -> Term -> STSumExpr
+reduceTerm :: KernelConfig -> Term -> STSum
 reduceTerm c (Term m) = STSum $ A.singleton (STVar term) (expr * cntExpr)
   where varType' pair = varType $ fst pair
         pairList = A.toList m
@@ -51,7 +51,7 @@ reduceTerm c (Term m) = STSum $ A.singleton (STVar term) (expr * cntExpr)
         (term, expr) = splitInd c rvList
         cntExpr =  toExpr . toTerm $ rvList
 
-collectFromExpr :: KernelConfig -> ExprInt -> [STVar]
+collectFromExpr :: KernelConfig -> Expr -> [STVar]
 collectFromExpr config  (Expr m) = filter (/= mempty) . A.toListKeys .  getSTSum $  s
     where s = mconcat [mulSTSum (reduce t) n | (t, n) <- A.toList m]
           reduce = reduceTerm config
@@ -110,5 +110,5 @@ kernel config rootList  = go (S.fromList . map normalize $ rootList) S.empty
                           visitList = S.toList visitSet
                           seen' = seen <> visitSet
 
-kernelExpr :: KernelConfig -> ExprInt -> KernelOutput
+kernelExpr :: KernelConfig -> Expr -> KernelOutput
 kernelExpr = liftA2 (.) kernel collectFromExpr
