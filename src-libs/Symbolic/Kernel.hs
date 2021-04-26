@@ -100,7 +100,7 @@ data KernelOutput = KernelOutput
     vectorB :: Vector Double
   } deriving (Eq, Show, Generic)
 
-buildY0Vector :: [STVar] -> Vector Double
+buildY0Vector :: KernelConfig -> [STVar] -> Vector Double
 buildY0Vector = undefined
 
 -- TODO: Improve this implementation
