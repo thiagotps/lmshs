@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 module Main where
 import Test.QuickCheck
 import Test.QuickCheck.Arbitrary.Generic
@@ -64,37 +66,37 @@ instance Arbitrary Var where
 instance Arbitrary Term where
   arbitrary = Term <$> arbitrary
 
-instance Arbitrary Expr where
+instance Arbitrary ExprInt where
   arbitrary = Expr <$> arbitrary
 
 instance Arbitrary STVar where
   arbitrary = STVar . Term . A.fromList . map (first getRVar) <$> (arbitrary :: Gen [(RVar, Int)])
 
-instance Arbitrary STSum where
+instance Arbitrary STSumExpr where
   arbitrary = STSum <$> arbitrary
 
 testExpr = hspec $
   describe "Expr properties" $ do
   it "(x + y) + z == x + (y + z)" $ do
-    property (\(x,y,z) -> ((x :: Expr) + y) + z == x + (y + z))
+    property (\(x,y,z) -> ((x :: ExprInt) + y) + z == x + (y + z))
   it "(x * y) * z == x * (y * z)" $ do
-    property . withMaxSuccess 30 $ (\(x,y,z) -> ((x :: Expr) * y) * z == x * (y * z))
+    property . withMaxSuccess 30 $ (\(x,y,z) -> ((x :: ExprInt) * y) * z == x * (y * z))
 
   it "x + y == y + x" $ do
-    property (\(x,y) -> x + y == y + (x :: Expr))
+    property (\(x,y) -> x + y == y + (x :: ExprInt))
   it "x * y == y * x" $ do
-    property (\(x,y) -> x * y == y * (x :: Expr))
+    property (\(x,y) -> x * y == y * (x :: ExprInt))
 
   it "x + 0 == x" $ do
-    property (\x -> x + (0 :: Expr) == x)
+    property (\x -> x + (0 :: ExprInt) == x)
   it "x*1 == x" $ do
-    property (\x -> x * (1 :: Expr) == x)
+    property (\x -> x * (1 :: ExprInt) == x)
 
   it "x - x == 0" $ do
-    property (\x -> x - x == (0 :: Expr))
+    property (\x -> x - x == (0 :: ExprInt))
 
   it "x * (y + z) == x*y + x*z" $ do
-    property (\(x,y,z) -> (x :: Expr) * (y + z) == x*y + x*z)
+    property (\(x,y,z) -> (x :: ExprInt) * (y + z) == x*y + x*z)
 
 
 testNormalize = hspec $
