@@ -15,6 +15,7 @@ main = do
   putStrLn $ "numberOfEqs = " ++ (show . sum $ levelSize)
   withFile "num.txt" WriteMode $ \h -> do
     hPrint h matrixA
+    hPrint h vectorY0
     hPrint h vectorB
   withFile "sym.txt" WriteMode $ \h -> do
     hPrint h stateVarList

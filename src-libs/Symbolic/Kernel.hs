@@ -37,12 +37,14 @@ type IndFunc = Var -> Var -> Bool
 type ExpandFunc = Var -> Expr
 type ReduceFunc = (Var, Int) -> Maybe Expr
 type NumericExpandFunc = Var -> Double
+type IniExpandFunc = STVar -> Double
 
 data KernelConfig = KernelConfig
   { indF :: IndFunc,
     expandF :: ExpandFunc,
     reduceF :: ReduceFunc,
-    numericExpandF :: NumericExpandFunc
+    numericExpandF :: NumericExpandFunc,
+    iniExpandF :: IniExpandFunc
   }
 
 splitInd :: KernelConfig -> [(Var, Int)] -> (Term, Expr)
@@ -98,6 +100,7 @@ data KernelOutput = KernelOutput
     levelSize :: [Int],
     stateVarList :: [STVar],
     matrixA :: Matrix Double,
+    vectorY0 :: Vector Double,
     vectorB :: Vector Double
   } deriving (Eq, Show, Generic)
 
@@ -105,30 +108,34 @@ buildY0Vector :: KernelConfig -> [STVar] -> Vector Double
 buildY0Vector = undefined
 
 -- TODO: Improve this implementation
-buildMatrix :: [(STVar, [(STVar, Double)])] -> KernelOutput
-buildMatrix l = KernelOutput {levelSize = [], stateVarList = stvList, matrixA = ma, vectorB = vb}
-  where (ma, vb) = runST $ do
-          let n = length l
-          let num = M.fromList $ stvList `zip` [0..]
-          ma <- newMatrix 0 n n
-          vb <- newVector 0 n
-          forM_ l $ \(a, la) -> do
-            let i = num ! a
-            forM_ la $ \(b, val) -> do
-              let j = num ! b
-              if b == mempty
-                then writeVector vb i val
-                else writeMatrix ma i j val
-          ma' <- freezeMatrix ma
-          vb' <- freezeVector vb
-          return (ma', vb')
+buildMatrix :: KernelConfig -> [(STVar, [(STVar, Double)])] -> KernelOutput
+buildMatrix KernelConfig {iniExpandF = iniF} l =
+  KernelOutput {levelSize = [], stateVarList = stvList, matrixA = ma, vectorY0 = vY0, vectorB = vb}
+  where
+    (ma, vb) = runST $ do
+      let n = length l
+      let num = M.fromList $ stvList `zip` [0 ..]
+      ma <- newMatrix 0 n n
+      vb <- newVector 0 n
+      forM_ l $ \(a, la) -> do
+        let i = num ! a
+        forM_ la $ \(b, val) -> do
+          let j = num ! b
+          if b == mempty
+            then writeVector vb i val
+            else writeMatrix ma i j val
+      ma' <- freezeMatrix ma
+      vb' <- freezeVector vb
+      return (ma', vb')
 
-        stvList = map fst l
+    stvList = map fst l
+    vY0 = N.fromList $ map iniF stvList
+
 
 kernel :: KernelConfig -> [STVar] -> KernelOutput
 kernel config rootList =
   let (s, l) = runRS go (S.fromList . map normalize $ rootList, S.empty) []
-      out = buildMatrix s
+      out = buildMatrix config s
    in out {levelSize = l}
   where
     go :: RS (Set STVar, Set STVar) [(STVar, [(STVar, Double)])] [Int]

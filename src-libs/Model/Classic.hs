@@ -76,6 +76,14 @@ buildExpr filterLenght dataLenght = inn ^ 2
     inn = innSum 0
     innSum = innBuilder filterLenght dataLenght
 
+iniExpandF' :: STVar -> Double
+iniExpandF' = foldl (*) 1.0 . map convert . A.toList . getTerm . getSTVar
+  where
+    convert (v, n) = case v of
+      Var {name = 'v'} -> 1.0
+      Var {name = 'u'} -> numFactorial n * (scale ^ n)
+    scale = 0.5
+
 numFactorial :: Int -> Double
 numFactorial n | n <= 1 = 1.0
               | otherwise = fromIntegral n * numFactorial ( n - 1 )
@@ -89,7 +97,7 @@ numericExpandF' v = error $ "Unrecognized variable: " ++ show v
 
 buildConfig :: FilterLenght -> DataLenght -> KernelConfig
 buildConfig filterLenght dataLenght =
-  KernelConfig{indF=isInd, reduceF=reduce, expandF=expandFunc, numericExpandF=numericExpandF'}
+  KernelConfig{indF=isInd, reduceF=reduce, expandF=expandFunc, numericExpandF=numericExpandF', iniExpandF = iniExpandF'}
   where
     expandFunc = expandFuncBuilder filterLenght dataLenght
 
