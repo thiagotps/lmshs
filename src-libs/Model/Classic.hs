@@ -76,9 +76,20 @@ buildExpr filterLenght dataLenght = inn ^ 2
     inn = innSum 0
     innSum = innBuilder filterLenght dataLenght
 
+numFactorial :: Int -> Double
+numFactorial n | n <= 1 = 1.0
+              | otherwise = fromIntegral n * numFactorial ( n - 1 )
+
+numericExpandF' Var{name = 'a', index1 = Just i} = 1.0 / fromIntegral (i + 1)
+numericExpandF' Var{name = 'γ', index1 = Just n} = numFactorial n * (scale ^ n)
+  where scale = 0.5
+numericExpandF' Var{name = 'σ'} = 0.001
+numericExpandF' Var{name = 'µ'} = 0.1
+numericExpandF' v = error $ "Unrecognized variable: " ++ show v
+
 buildConfig :: FilterLenght -> DataLenght -> KernelConfig
 buildConfig filterLenght dataLenght =
-  KernelConfig{indF=isInd, reduceF=reduce, expandF=expandFunc, numericExpandF=const 1}
+  KernelConfig{indF=isInd, reduceF=reduce, expandF=expandFunc, numericExpandF=numericExpandF'}
   where
     expandFunc = expandFuncBuilder filterLenght dataLenght
 

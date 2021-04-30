@@ -26,10 +26,11 @@ import Debug.Trace (trace)
 
 import Control.Monad
 import Control.Monad.RWS
+import Control.Monad.ST
 import Data.Bifunctor (second, first)
-import Numeric.LinearAlgebra (Matrix)
+import Numeric.LinearAlgebra (Matrix, build, Vector)
+import Numeric.LinearAlgebra.Devel
 import qualified Numeric.LinearAlgebra as N
-import Numeric.LinearAlgebra.Data (build, Vector)
 
 
 type IndFunc = Var -> Var -> Bool
@@ -59,10 +60,10 @@ reduceTerm c (Term m) = STSum $ A.singleton (STVar term) (expr * cntExpr)
         rvList = filter (\x -> varType' x == RV) pairList
         cntList = filter (\x -> varType' x == Cnt) pairList
         (term, expr) = splitInd c rvList
-        cntExpr =  toExpr . toTerm $ rvList
+        cntExpr =  toExpr . toTerm $ cntList
 
 term2Double :: (Var -> Double) -> Term -> Double
-term2Double f t = sum [f v ^ n | (v, n) <- A.toList . getTerm $ t]
+term2Double f t = foldl (*) 1.0 [f v ^ n | (v, n) <- A.toList . getTerm $ t]
 
 expr2Double :: (Var -> Double) -> Expr -> Double
 expr2Double f e = sum [term2Double f t * fromIntegral n | (t, n) <- A.toList . getExpr $ e]
@@ -70,7 +71,7 @@ expr2Double f e = sum [term2Double f t * fromIntegral n | (t, n) <- A.toList . g
 collectFromExpr :: KernelConfig -> Expr -> [(STVar, Double)]
 collectFromExpr config@KernelConfig {numericExpandF = f} (Expr m) = second (expr2Double f) <$> (A.toList . getSTSum $ s)
   where
-    s = mconcat [mulSTSum (reduce t) n | (t, n) <- A.toList m]
+    s =  mconcat [mulSTSum (reduce t) n | (t, n) <- A.toList m]
     reduce = reduceTerm config
     mulSTSum (STSum m) n = STSum . A.map (* fromIntegral n) $ m
 
@@ -104,40 +105,35 @@ buildY0Vector :: KernelConfig -> [STVar] -> Vector Double
 buildY0Vector = undefined
 
 -- TODO: Improve this implementation
-buildMatrix :: Map STVar (Map STVar Double) -> KernelOutput
-buildMatrix m =
-  KernelOutput
-    { levelSize = [],
-      stateVarList = vars,
-      matrixA = build (n, n) f,
-      vectorB = build n g
-    }
-  where
-    vars = M.keys m
-    n = length vars
-    vars2num = M.fromList $ zip vars [0 ..]
-    num2vars = M.fromList $ zip [0 ..] vars
-    f i j =
-      let va = num2vars ! i
-          vb = num2vars ! j
-          maybeDouble = (m ! va) !? vb
-       in fromMaybe 0 maybeDouble
-    g i =
-      let va = num2vars ! i
-          maybeDouble = (m ! va) !? mempty
-       in fromMaybe 0 maybeDouble
+buildMatrix :: [(STVar, [(STVar, Double)])] -> KernelOutput
+buildMatrix l = KernelOutput {levelSize = [], stateVarList = stvList, matrixA = ma, vectorB = vb}
+  where (ma, vb) = runST $ do
+          let n = length l
+          let num = M.fromList $ stvList `zip` [0..]
+          ma <- newMatrix 0 n n
+          vb <- newVector 0 n
+          forM_ l $ \(a, la) -> do
+            let i = num ! a
+            forM_ la $ \(b, val) -> do
+              let j = num ! b
+              if b == mempty
+                then writeVector vb i val
+                else writeMatrix ma i j val
+          ma' <- freezeMatrix ma
+          vb' <- freezeVector vb
+          return (ma', vb')
 
+        stvList = map fst l
 
 kernel :: KernelConfig -> [STVar] -> KernelOutput
 kernel config rootList =
-  let (s, l) = runRS go (S.fromList . map normalize $ rootList) M.empty
+  let (s, l) = runRS go (S.fromList . map normalize $ rootList, S.empty) []
       out = buildMatrix s
    in out {levelSize = l}
   where
-    go :: RS (Set STVar) (Map STVar (Map STVar Double)) [Int]
+    go :: RS (Set STVar, Set STVar) [(STVar, [(STVar, Double)])] [Int]
     go = do
-      visit <- ask
-      seen <- gets M.keysSet
+      (visit, seen) <- ask
 
       if S.null visit
         then return mempty
@@ -148,16 +144,15 @@ kernel config rootList =
                 v <- S.toList visitSet
                 let r = first normalize <$> expand config v
                 let s = S.fromList . filter (/= mempty) . map fst $ r
-                let m = M.fromList r
-                return (s S.\\ newSeen, M.singleton v m)
+                return (s S.\\ newSeen, [(v, r)])
 
-          let (newNeigh, partialStMap) = runEval $ do
+          let (newNeigh, partialSTList) = runEval $ do
                 let l = divide 4 visit
                 (a, b) <- mconcat <$> mapM (rpar . transform) l
                 return (a, b)
 
-          modify (partialStMap <>)
-          (length visit :) <$> local (const newNeigh) go
+          modify (partialSTList <>)
+          (length visit :) <$> local (const (newNeigh, newSeen)) go
 
 
 divide :: (Ord a) => Int -> Set a -> [Set a]
