@@ -81,7 +81,7 @@ iniExpandF' = foldl (*) 1.0 . map convert . A.toList . getTerm . getSTVar
   where
     convert (v, n) = case v of
       Var {name = 'v'} -> 1.0
-      Var {name = 'u'} -> numFactorial n * (scale ^ n)
+      Var {name = 'u'} -> if odd n then 0 else numFactorial n * (scale ^ n)
     scale = 0.5
 
 numFactorial :: Int -> Double

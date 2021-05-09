@@ -31,6 +31,8 @@ import Data.Bifunctor (second, first)
 import Numeric.LinearAlgebra (Matrix, build, Vector)
 import Numeric.LinearAlgebra.Devel
 import qualified Numeric.LinearAlgebra as N
+import qualified Data.Vector as V
+import Numeric.LinearAlgebra.HMatrix ((<.>))
 
 
 type IndFunc = Var -> Var -> Bool
@@ -174,3 +176,20 @@ divide n s =  f (intLog2 n)
 
 kernelExpr :: KernelConfig -> Expr -> KernelOutput
 kernelExpr config expr = kernel config $ fst <$> collectFromExpr config expr
+
+buildEvaluator :: KernelConfig -> KernelOutput -> Expr -> (Vector Double -> Double)
+buildEvaluator config KernelOutput{..} expr = eval
+  where
+        (iniSTVlist, vec) = let l = collectFromExpr config expr
+                                in (normalize . fst <$> l, N.fromList $ snd <$> l)
+        stvEnum = M.fromList (stateVarList `zip` [0..])
+        idxList = V.fromList $ map (stvEnum ! ) iniSTVlist
+        eval y = let sy = runSTVector $ do
+                       y' <- thawVector y
+                       sy' <- newVector 0 (length idxList)
+                       forM_ [0..length idxList - 1] $ \i -> do
+                         let idx = idxList V.! i
+                         v <- readVector y' idx
+                         writeVector sy' i v
+                       return sy'
+                     in vec <.> sy
