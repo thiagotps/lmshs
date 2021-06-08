@@ -8,7 +8,7 @@ import System.IO
 import qualified Data.Massiv.Array as D
 import qualified Data.Massiv.Array.Mutable as D
 import Control.Monad
-import Data.Massiv.Array.Numeric ((!><), (!+!))
+import Symbolic.Sparse
 
 
 
@@ -32,7 +32,7 @@ main = do
     hPrint h stateVarList
 
   let eval = buildEvaluator config out finalExpr
-  let y = vectorY0 : [D.computeS (matrixA !>< yk) !+! vectorB | yk <- y]
+  let y = vectorY0 : [(matrixA !*! yk) !+! vectorB | yk <- y]
   -- let y = vectorY0 : [matrixA #> yk `add` vectorB | yk <- y]
   withFile "emse.txt" WriteMode $ \h -> do
     forM_ (zip [0..1000] (map eval y)) $ \(idx, val) -> do

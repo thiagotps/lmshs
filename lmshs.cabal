@@ -54,6 +54,7 @@ library
                      Symbolic.Term,
                      Symbolic.STVar,
                      Symbolic.Kernel,
+                     Symbolic.Sparse,
                      Model.Classic
 
     hs-source-dirs: src-libs

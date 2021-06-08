@@ -6,6 +6,7 @@
 module Symbolic.Kernel
   ( module Symbolic.Kernel,
     module Symbolic.STVar,
+    module Symbolic.Sparse
   )
 where
 
@@ -29,12 +30,11 @@ import Control.Monad
 import Control.Monad.RWS
 import Control.Monad.ST
 import Data.Bifunctor (second, first)
-import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as V
 
-import Data.Massiv.Array (Array, U, Ix2, Sz2, Sz1, Ix1, Comp (Seq), (!.!))
-import qualified Data.Massiv.Array as D
-import qualified Data.Massiv.Array.Mutable as D
+import Symbolic.Sparse
 
+import qualified Data.List as L
 
 type IndFunc = Var -> Var -> Bool
 type ExpandFunc = Var -> Expr
@@ -98,19 +98,17 @@ type RS r s  = RWS r () s
 runRS :: RS r s a -> r -> s -> (s, a)
 runRS m r s = let (a, s', _) = runRWS m r s in (s', a)
 
-type Matrix = Array U Ix2
-type Vector = Array U Ix1
 
 data KernelOutput = KernelOutput
   {
     levelSize :: [Int],
     stateVarList :: [STVar],
-    matrixA :: Matrix Double,
-    vectorY0 :: Vector Double,
-    vectorB :: Vector Double
+    matrixA :: Sparse,
+    vectorY0 :: Vector,
+    vectorB :: Vector
   } deriving (Eq, Show, Generic)
 
-buildY0Vector :: KernelConfig -> [STVar] -> Vector Double
+buildY0Vector :: KernelConfig -> [STVar] -> Vector
 buildY0Vector = undefined
 
 -- TODO: Improve this implementation
@@ -119,28 +117,30 @@ buildMatrix KernelConfig {iniExpandF = iniF} l =
   KernelOutput {levelSize = [], stateVarList = stvList, matrixA = ma, vectorY0 = vY0, vectorB = vb}
   where
     stvList = map fst l
-    vY0 = D.fromList Seq $ map iniF stvList
+    innerLists =  map snd l
+    vY0 = V.fromList  $ map iniF stvList
 
     n = length l
     num = M.fromList $ stvList `zip` [0 ..] :: Map STVar Int
+    ma = Sparse . map (\il -> [(num ! stv, val) | (stv, val) <- il, stv /= mempty]) $ innerLists
+    vb = V.fromList $ [ fromMaybe 0 (L.lookup mempty il) | il <- innerLists ]
+    -- ma = D.createArrayST_ (D.Sz2 n n) $ \m -> do
+    --   forM_ l $ \(a, la) -> do
+    --     let i = num ! a
+    --     forM_ la $ \(b, val) -> do
+    --       let j = num ! b
+    --       unless (b == mempty) $ do
+    --         D.write m (D.Ix2 i j) val
+    --         return ()
 
-    ma = D.createArrayST_ (D.Sz2 n n) $ \m -> do
-      forM_ l $ \(a, la) -> do
-        let i = num ! a
-        forM_ la $ \(b, val) -> do
-          let j = num ! b
-          unless (b == mempty) $ do
-            D.write m (D.Ix2 i j) val
-            return ()
-
-    vb = D.createArrayST_ (D.Sz1 n) $ \v -> do
-      forM_ l $ \(a, la) -> do
-        let i = num ! a
-        forM_ la $ \(b, val) -> do
-          let j = num ! b
-          when (b == mempty) $ do
-            D.write v (D.Ix1 i) val
-            return ()
+    -- vb = D.createArrayST_ (D.Sz1 n) $ \v -> do
+    --   forM_ l $ \(a, la) -> do
+    --     let i = num ! a
+    --     forM_ la $ \(b, val) -> do
+    --       let j = num ! b
+    --       when (b == mempty) $ do
+    --         D.write v (D.Ix1 i) val
+    --         return ()
 
 
 kernel :: KernelConfig -> [STVar] -> KernelOutput
@@ -186,23 +186,14 @@ divide n s =  f (intLog2 n)
 kernelExpr :: KernelConfig -> Expr -> KernelOutput
 kernelExpr config expr = kernel config $ fst <$> collectFromExpr config expr
 
-buildEvaluator :: KernelConfig -> KernelOutput -> Expr -> (Vector Double -> Double)
+buildEvaluator :: KernelConfig -> KernelOutput -> Expr -> (Vector -> Double)
 buildEvaluator config KernelOutput{..} expr = eval
   where
         (iniSTVlist, vec) = let l = collectFromExpr config expr
-                                in (normalize . fst <$> l, D.fromList Seq $ snd <$> l :: Vector Double)
+                                in (normalize . fst <$> l, V.fromList $ snd <$> l)
         stvEnum = M.fromList (stateVarList `zip` [0..]) :: Map STVar Int
         idxVec = V.fromList $ map (stvEnum ! ) iniSTVlist
         eval y = let n = V.length idxVec
-                     sy :: Vector Double
-                     sy = D.makeArray Seq (D.Sz1 n) (\i -> let ii = idxVec V.! i in (y D.! ii))
+                     sy :: Vector
+                     sy = V.generate n (\i -> let ii = idxVec V.! i in (y V.! ii))
                      in vec !.! sy
-        -- eval y = let sy = runSTVector $ do
-        --                y' <- thawVector y
-        --                sy' <- newVector 0 (length idxList)
-        --                forM_ [0..length idxList - 1] $ \i -> do
-        --                  let idx = idxList V.! i
-        --                  v <- readVector y' idx
-        --                  writeVector sy' i v
-        --                return sy'
-        --              in vec <.> sy
