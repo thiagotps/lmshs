@@ -2,6 +2,7 @@
 
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Symbolic.Kernel
   ( module Symbolic.Kernel,
     module Symbolic.STVar,
@@ -28,11 +29,11 @@ import Control.Monad
 import Control.Monad.RWS
 import Control.Monad.ST
 import Data.Bifunctor (second, first)
-import Numeric.LinearAlgebra (Matrix, build, Vector)
-import Numeric.LinearAlgebra.Devel
-import qualified Numeric.LinearAlgebra as N
 import qualified Data.Vector as V
-import Numeric.LinearAlgebra.HMatrix ((<.>))
+
+import Data.Massiv.Array (Array, U, Ix2, Sz2, Sz1, Ix1, Comp (Seq), (!.!))
+import qualified Data.Massiv.Array as D
+import qualified Data.Massiv.Array.Mutable as D
 
 
 type IndFunc = Var -> Var -> Bool
@@ -97,6 +98,9 @@ type RS r s  = RWS r () s
 runRS :: RS r s a -> r -> s -> (s, a)
 runRS m r s = let (a, s', _) = runRWS m r s in (s', a)
 
+type Matrix = Array U Ix2
+type Vector = Array U Ix1
+
 data KernelOutput = KernelOutput
   {
     levelSize :: [Int],
@@ -114,24 +118,29 @@ buildMatrix :: KernelConfig -> [(STVar, [(STVar, Double)])] -> KernelOutput
 buildMatrix KernelConfig {iniExpandF = iniF} l =
   KernelOutput {levelSize = [], stateVarList = stvList, matrixA = ma, vectorY0 = vY0, vectorB = vb}
   where
-    (ma, vb) = runST $ do
-      let n = length l
-      let num = M.fromList $ stvList `zip` [0 ..]
-      ma <- newMatrix 0 n n
-      vb <- newVector 0 n
+    stvList = map fst l
+    vY0 = D.fromList Seq $ map iniF stvList
+
+    n = length l
+    num = M.fromList $ stvList `zip` [0 ..] :: Map STVar Int
+
+    ma = D.createArrayST_ (D.Sz2 n n) $ \m -> do
       forM_ l $ \(a, la) -> do
         let i = num ! a
         forM_ la $ \(b, val) -> do
           let j = num ! b
-          if b == mempty
-            then writeVector vb i val
-            else writeMatrix ma i j val
-      ma' <- freezeMatrix ma
-      vb' <- freezeVector vb
-      return (ma', vb')
+          unless (b == mempty) $ do
+            D.write m (D.Ix2 i j) val
+            return ()
 
-    stvList = map fst l
-    vY0 = N.fromList $ map iniF stvList
+    vb = D.createArrayST_ (D.Sz1 n) $ \v -> do
+      forM_ l $ \(a, la) -> do
+        let i = num ! a
+        forM_ la $ \(b, val) -> do
+          let j = num ! b
+          when (b == mempty) $ do
+            D.write v (D.Ix1 i) val
+            return ()
 
 
 kernel :: KernelConfig -> [STVar] -> KernelOutput
@@ -181,15 +190,19 @@ buildEvaluator :: KernelConfig -> KernelOutput -> Expr -> (Vector Double -> Doub
 buildEvaluator config KernelOutput{..} expr = eval
   where
         (iniSTVlist, vec) = let l = collectFromExpr config expr
-                                in (normalize . fst <$> l, N.fromList $ snd <$> l)
-        stvEnum = M.fromList (stateVarList `zip` [0..])
-        idxList = V.fromList $ map (stvEnum ! ) iniSTVlist
-        eval y = let sy = runSTVector $ do
-                       y' <- thawVector y
-                       sy' <- newVector 0 (length idxList)
-                       forM_ [0..length idxList - 1] $ \i -> do
-                         let idx = idxList V.! i
-                         v <- readVector y' idx
-                         writeVector sy' i v
-                       return sy'
-                     in vec <.> sy
+                                in (normalize . fst <$> l, D.fromList Seq $ snd <$> l :: Vector Double)
+        stvEnum = M.fromList (stateVarList `zip` [0..]) :: Map STVar Int
+        idxVec = V.fromList $ map (stvEnum ! ) iniSTVlist
+        eval y = let n = V.length idxVec
+                     sy :: Vector Double
+                     sy = D.makeArray Seq (D.Sz1 n) (\i -> let ii = idxVec V.! i in (y D.! ii))
+                     in vec !.! sy
+        -- eval y = let sy = runSTVector $ do
+        --                y' <- thawVector y
+        --                sy' <- newVector 0 (length idxList)
+        --                forM_ [0..length idxList - 1] $ \i -> do
+        --                  let idx = idxList V.! i
+        --                  v <- readVector y' idx
+        --                  writeVector sy' i v
+        --                return sy'
+        --              in vec <.> sy

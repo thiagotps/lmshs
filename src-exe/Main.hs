@@ -1,13 +1,16 @@
 {-# LANGUAGE RecordWildCards #-}
 module Main where
 import Model.Classic (runModel, buildConfig, buildExpr)
-import Symbolic.Kernel (KernelOutput (..), buildEvaluator, kernelExpr)
+import Symbolic.Kernel (KernelOutput (..), kernelExpr, buildEvaluator)
 
 import System.Environment (getArgs)
 import System.IO
-import Numeric.LinearAlgebra ((#>))
-import Numeric.LinearAlgebra.HMatrix (add)
+import qualified Data.Massiv.Array as D
+import qualified Data.Massiv.Array.Mutable as D
 import Control.Monad
+import Data.Massiv.Array.Numeric ((!><), (!+!))
+
+
 
 main :: IO ()
 main = do
@@ -29,7 +32,8 @@ main = do
     hPrint h stateVarList
 
   let eval = buildEvaluator config out finalExpr
-  let y = vectorY0 : [matrixA #> yk `add` vectorB | yk <- y]
+  let y = vectorY0 : [D.computeS (matrixA !>< yk) !+! vectorB | yk <- y]
+  -- let y = vectorY0 : [matrixA #> yk `add` vectorB | yk <- y]
   withFile "emse.txt" WriteMode $ \h -> do
     forM_ (zip [0..1000] (map eval y)) $ \(idx, val) -> do
       hPutStrLn h $ show idx ++ " " ++ show val
