@@ -47,7 +47,8 @@ data KernelConfig = KernelConfig
     expandF :: ExpandFunc,
     reduceF :: ReduceFunc,
     numericExpandF :: NumericExpandFunc,
-    iniExpandF :: IniExpandFunc
+    iniExpandF :: IniExpandFunc,
+    ncpu :: Int
   }
 
 splitInd :: KernelConfig -> [(Var, Int)] -> (Term, Expr)
@@ -165,7 +166,7 @@ kernel config rootList =
                 return (s S.\\ newSeen, [(v, r)])
 
           let (newNeigh, partialSTList) = runEval $ do
-                let l = divide 4 visit
+                let l = divide (ncpu config) visit
                 (a, b) <- mconcat <$> mapM (rpar . transform) l
                 return (a, b)
 

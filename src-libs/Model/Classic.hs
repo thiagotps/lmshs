@@ -95,9 +95,9 @@ numericExpandF' Var{name = 'σ'} = 0.001
 numericExpandF' Var{name = 'µ'} = 0.1
 numericExpandF' v = error $ "Unrecognized variable: " ++ show v
 
-buildConfig :: FilterLenght -> DataLenght -> KernelConfig
-buildConfig filterLenght dataLenght =
-  KernelConfig{indF=isInd, reduceF=reduce, expandF=expandFunc, numericExpandF=numericExpandF', iniExpandF = iniExpandF'}
+buildConfig :: FilterLenght -> DataLenght -> Int -> KernelConfig
+buildConfig filterLenght dataLenght ncpu =
+  KernelConfig{indF=isInd, reduceF=reduce, expandF=expandFunc, numericExpandF=numericExpandF', iniExpandF = iniExpandF', ncpu = ncpu}
   where
     expandFunc = expandFuncBuilder filterLenght dataLenght
 
@@ -105,4 +105,4 @@ runModel :: FilterLenght -> DataLenght -> KernelOutput
 runModel filterLenght dataLenght = kernelExpr config finalExpr
   where
     finalExpr = buildExpr filterLenght dataLenght
-    config = buildConfig filterLenght dataLenght
+    config = buildConfig filterLenght dataLenght 1
