@@ -24,7 +24,8 @@ data ProgArgs = ProgArgs
     stepSize :: Double,
     sigmav2 :: Double,
     filterLenght :: Int,
-    dataLenght :: Int
+    dataLenght :: Int,
+    startLevelForIA :: Maybe Int
   } deriving (Show, Eq, Data, Typeable)
 
 progArgs =
@@ -36,7 +37,8 @@ progArgs =
       stepSize = -1 &= help "Step size.",
       sigmav2 = -1 &= help "variance (σᵥ²).",
       filterLenght = def &= help "Filter length." &= explicit &= name "N",
-      dataLenght = def &= help "Data length." &= explicit &= name "M"
+      dataLenght = def &= help "Data length." &= explicit &= name "M",
+      startLevelForIA = def &= help "The level to start applying the IA assumption."
     }
 
 isPower2 :: Int -> Bool
@@ -56,10 +58,14 @@ main = do
      | not . isPower2 $ ncpu -> putStrLn $ "You can only pass power of 2 number of threads!!! Current is " ++ show ncpu
      | isJust emseFile && (maxIter < 0 || stepSize < 0 || sigmav2 < 0) -> putStrLn "MaxIter, stepsize or sigmav2 is not specified."
      | otherwise -> do
-        let modelConfig = ModelConfig{stepSize, sigmav = sqrt sigmav2, filterLenght, dataLenght, ncpu}
+        let modelConfig = ModelConfig{stepSize, sigmav = sqrt sigmav2, filterLenght, dataLenght, ncpu, startLevelForIA}
         let finalExpr = buildExpr modelConfig
         let config = buildConfig modelConfig
         let out@KernelOutput {..} = kernelExpr config finalExpr
+
+        case startLevelForIA of
+          Just s -> putStrLn $ "startLevelForIA = " ++ show s
+          Nothing -> return ()
 
         putStrLn $ "numberOfLevels = " ++ (show . length $ levelSize)
         putStrLn $ "levelSize = " ++ show levelSize

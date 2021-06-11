@@ -36,7 +36,7 @@ import Symbolic.Sparse
 
 import qualified Data.List as L
 
-type IndFunc = Var -> Var -> Bool
+type IndFunc = Int -> Var -> Var -> Bool
 type ExpandFunc = Var -> Expr
 type ReduceFunc = (Var, Int) -> Maybe Expr
 type NumericExpandFunc = Var -> Double
@@ -51,15 +51,21 @@ data KernelConfig = KernelConfig
     ncpu :: Int
   }
 
-splitInd :: KernelConfig -> [(Var, Int)] -> (Term, Expr)
-splitInd KernelConfig{..} rvList =  (term, expr)
-  where isIndFromOthers v = all (indF v) . filter (/= v) . map fst $ rvList
+data InnerConfig = InnerConfig
+  {
+    kernelConfig :: KernelConfig,
+    currentLevel :: Int
+  }
+
+splitInd :: InnerConfig -> [(Var, Int)] -> (Term, Expr)
+splitInd InnerConfig{kernelConfig=KernelConfig{..}, currentLevel=cLevel} rvList =  (term, expr)
+  where isIndFromOthers v = all (indF cLevel v) . filter (/= v) . map fst $ rvList
         isReducible v = isJust . reduceF $ (v, 1)
         (l, r) = partition (\(x, _) -> isIndFromOthers x && isReducible x) rvList
         expr = product . map (fromJust . reduceF) $ l
         term = toTerm r
 
-reduceTerm :: KernelConfig -> Term -> STSum
+reduceTerm :: InnerConfig -> Term -> STSum
 reduceTerm c (Term m) = STSum $ A.singleton (STVar term) (expr * cntExpr)
   where varType' pair = varType $ fst pair
         pairList = A.toList m
@@ -74,17 +80,18 @@ term2Double f t = foldl (*) 1.0 [f v ^ n | (v, n) <- A.toList . getTerm $ t]
 expr2Double :: (Var -> Double) -> Expr -> Double
 expr2Double f e = sum [term2Double f t * fromIntegral n | (t, n) <- A.toList . getExpr $ e]
 
-collectFromExpr :: KernelConfig -> Expr -> [(STVar, Double)]
-collectFromExpr config@KernelConfig {numericExpandF = f} (Expr m) = second (expr2Double f) <$> (A.toList . getSTSum $ s)
+collectFromExpr :: InnerConfig -> Expr -> [(STVar, Double)]
+collectFromExpr config@InnerConfig {kernelConfig=kc} (Expr m) = second (expr2Double f) <$> (A.toList . getSTSum $ s)
   where
+    f = numericExpandF kc
     s =  mconcat [mulSTSum (reduce t) n | (t, n) <- A.toList m]
     reduce = reduceTerm config
     mulSTSum (STSum m) n = STSum . A.map (* fromIntegral n) $ m
 
-expand :: KernelConfig -> STVar -> [(STVar, Double)]
-expand config@KernelConfig{..} v@(STVar (Term m))  = collectFromExpr config s
+expand :: InnerConfig -> STVar -> [(STVar, Double)]
+expand config@InnerConfig{kernelConfig=kc} v@(STVar (Term m))  = collectFromExpr config s
   where
-    s = product [expandF x ^ a | (x, a) <- A.toList m]
+    s = product [expandF kc x ^ a | (x, a) <- A.toList m]
 
 normalize :: STVar -> STVar
 normalize (STVar (Term t)) = STVar . Term . A.mapKey subIndex $ t
@@ -126,13 +133,13 @@ buildMatrix KernelConfig {iniExpandF = iniF} l =
 
 kernel :: KernelConfig -> [STVar] -> KernelOutput
 kernel config rootList =
-  let (s, l) = runRS go (S.fromList . map normalize $ rootList, S.empty) []
+  let (s, l) = runRS go (S.fromList . map normalize $ rootList, S.empty, 1) []
       out = buildMatrix config s
    in out {levelSize = l}
   where
-    go :: RS (Set STVar, Set STVar) [(STVar, [(STVar, Double)])] [Int]
+    go :: RS (Set STVar, Set STVar, Int) [(STVar, [(STVar, Double)])] [Int]
     go = do
-      (visit, seen) <- ask
+      (visit, seen, level) <- ask
 
       if S.null visit
         then return mempty
@@ -141,7 +148,7 @@ kernel config rootList =
 
           let transform visitSet = mconcat $ do
                 v <- S.toList visitSet
-                let r = first normalize <$> expand config v
+                let r = first normalize <$> expand (InnerConfig config level) v
                 let s = S.fromList . filter (/= mempty) . map fst $ r
                 return (s S.\\ newSeen, [(v, r)])
 
@@ -151,7 +158,7 @@ kernel config rootList =
                 return (a, b)
 
           modify (partialSTList <>)
-          (length visit :) <$> local (const (newNeigh, newSeen)) go
+          (length visit :) <$> local (const (newNeigh, newSeen, level + 1)) go
 
 
 divide :: (Ord a) => Int -> Set a -> [Set a]
@@ -165,12 +172,12 @@ divide n s =  f (intLog2 n)
 
 
 kernelExpr :: KernelConfig -> Expr -> KernelOutput
-kernelExpr config expr = kernel config $ fst <$> collectFromExpr config expr
+kernelExpr config expr = kernel config $ fst <$> collectFromExpr (InnerConfig config 1) expr
 
 buildEvaluator :: KernelConfig -> KernelOutput -> Expr -> (Vector -> Double)
 buildEvaluator config KernelOutput{..} expr = eval
   where
-        (iniSTVlist, vec) = let l = collectFromExpr config expr
+        (iniSTVlist, vec) = let l = collectFromExpr (InnerConfig config 1) expr
                                 in (normalize . fst <$> l, V.fromList $ snd <$> l)
         stvEnum = M.fromList (stateVarList `zip` [0..]) :: Map STVar Int
         idxVec = V.fromList $ map (stvEnum ! ) iniSTVlist

@@ -1,5 +1,6 @@
 -- |
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE NamedFieldPuns #-}
 module Model.Classic where
 
 import qualified Symbolic.Amap as A
@@ -26,13 +27,34 @@ vik i n =
       index2 = Just n
     }
 
-isInd :: IndFunc
-isInd x y = go x y || go y x
+
+eeaIndFunc :: Var -> Var -> Bool
+eeaIndFunc x y = go x y || go y x
   where
     go Var {name = 'u', index2 = Just n} Var {name = 'v', index2 = Just m} = n >= m
     go Var {name = 'u', index2 = Just n} Var {name = 'u', index2 = Just m} = n /= m
     go Var {name = 'n'} _ = True
     go _ _ = False
+
+
+iaIndFunc :: Var -> Var -> Bool
+iaIndFunc x y = go x y || go y x
+  where
+    go Var {name = 'u', index2 = Just n} Var {name = 'v', index2 = Just m} = True
+    go Var {name = 'u', index2 = Just n} Var {name = 'u', index2 = Just m} = n /= m
+    go Var {name = 'n'} _ = True
+    go _ _ = False
+
+
+
+isIndBuilder :: ModelConfig -> IndFunc
+isIndBuilder ModelConfig{startLevelForIA} n =
+  case startLevelForIA of
+    Nothing -> eeaIndFunc
+    Just s -> if n >= s
+      then iaIndFunc
+      else eeaIndFunc
+
 
 micro :: Var
 micro = defaultVar {name = 'µ'}
@@ -54,7 +76,8 @@ data ModelConfig = ModelConfig
     dataLenght :: Int,
     ncpu :: Int,
     stepSize :: Double,
-    sigmav :: Double
+    sigmav :: Double,
+    startLevelForIA :: Maybe Int
   }
 
 -- TODO:
@@ -114,7 +137,7 @@ numericExpandF' ModelConfig{..} v =
 buildConfig :: ModelConfig -> KernelConfig
 buildConfig config@ModelConfig{..} =
   KernelConfig
-    { indF = isInd,
+    { indF = isIndBuilder config,
       reduceF = reduce,
       expandF = expandFuncBuilder config,
       numericExpandF = numericExpandF' config,
