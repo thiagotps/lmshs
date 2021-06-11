@@ -109,9 +109,6 @@ data KernelOutput = KernelOutput
     vectorB :: Vector
   } deriving (Eq, Show, Generic)
 
-buildY0Vector :: KernelConfig -> [STVar] -> Vector
-buildY0Vector = undefined
-
 -- TODO: Improve this implementation
 buildMatrix :: KernelConfig -> [(STVar, [(STVar, Double)])] -> KernelOutput
 buildMatrix KernelConfig {iniExpandF = iniF} l =
@@ -125,23 +122,6 @@ buildMatrix KernelConfig {iniExpandF = iniF} l =
     num = M.fromList $ stvList `zip` [0 ..] :: Map STVar Int
     ma = Sparse . map (\il -> [(num ! stv, val) | (stv, val) <- il, stv /= mempty]) $ innerLists
     vb = V.fromList $ [ fromMaybe 0 (L.lookup mempty il) | il <- innerLists ]
-    -- ma = D.createArrayST_ (D.Sz2 n n) $ \m -> do
-    --   forM_ l $ \(a, la) -> do
-    --     let i = num ! a
-    --     forM_ la $ \(b, val) -> do
-    --       let j = num ! b
-    --       unless (b == mempty) $ do
-    --         D.write m (D.Ix2 i j) val
-    --         return ()
-
-    -- vb = D.createArrayST_ (D.Sz1 n) $ \v -> do
-    --   forM_ l $ \(a, la) -> do
-    --     let i = num ! a
-    --     forM_ la $ \(b, val) -> do
-    --       let j = num ! b
-    --       when (b == mempty) $ do
-    --         D.write v (D.Ix1 i) val
-    --         return ()
 
 
 kernel :: KernelConfig -> [STVar] -> KernelOutput
