@@ -1,4 +1,5 @@
 -- |
+{-# LANGUAGE RecordWildCards #-}
 module Model.Classic where
 
 import qualified Symbolic.Amap as A
@@ -47,8 +48,18 @@ innBuilder filterLenght dataLenght = innSum
     innSum n = sum [x (n - j) * toExpr (vik j n) | j <- [0 .. filterLenght - 1]]
     x = xBuilder dataLenght
 
-expandFuncBuilder :: FilterLenght -> DataLenght -> ExpandFunc
-expandFuncBuilder filterLenght dataLenght = expandFunc
+data ModelConfig = ModelConfig
+  {
+    filterLenght :: Int,
+    dataLenght :: Int,
+    ncpu :: Int,
+    stepSize :: Double,
+    sigmav :: Double
+  }
+
+-- TODO:
+expandFuncBuilder :: ModelConfig -> ExpandFunc
+expandFuncBuilder ModelConfig{..} = expandFunc
   where
     expandFunc :: ExpandFunc
     expandFunc Var {name = 'v', index1 = Just i, index2 = Just n1} =
@@ -70,13 +81,14 @@ reduce (Var {name = 'n'}, n)
   | otherwise = Just $ toExpr defaultVar {name = 'σ'} ^ n
 reduce _ = Nothing
 
-buildExpr :: FilterLenght -> DataLenght -> Expr
-buildExpr filterLenght dataLenght = inn ^ 2
+buildExpr :: ModelConfig -> Expr
+buildExpr ModelConfig{..} = inn ^ 2
   where
     inn = innSum 0
     innSum = innBuilder filterLenght dataLenght
 
-iniExpandF' :: STVar -> Double
+-- NOTE: Should it receive a ModelConfig too ?
+iniExpandF' ::  STVar -> Double
 iniExpandF' = foldl (*) 1.0 . map convert . A.toList . getTerm . getSTVar
   where
     convert (v, n) = case v of
@@ -86,23 +98,32 @@ iniExpandF' = foldl (*) 1.0 . map convert . A.toList . getTerm . getSTVar
 
 numFactorial :: Int -> Double
 numFactorial n | n <= 1 = 1.0
-              | otherwise = fromIntegral n * numFactorial ( n - 1 )
+               | otherwise = fromIntegral n * numFactorial ( n - 1 )
 
-numericExpandF' Var{name = 'a', index1 = Just i} = 1.0 / fromIntegral (i + 1)
-numericExpandF' Var{name = 'γ', index1 = Just n} = numFactorial n * (scale ^ n)
+-- TODO:
+numericExpandF' :: ModelConfig -> Var -> Double
+numericExpandF' ModelConfig{..} v =
+  case v of
+    Var{name = 'a', index1 = Just i} -> 1.0 / fromIntegral (i + 1)
+    Var{name = 'γ', index1 = Just n} -> numFactorial n * (scale ^ n)
+    Var{name = 'σ'} -> sigmav
+    Var{name = 'µ'} -> stepSize
+    _ -> error $ "Unrecognized variable: " ++ show v
   where scale = 0.5
-numericExpandF' Var{name = 'σ'} = 0.001
-numericExpandF' Var{name = 'µ'} = 0.1
-numericExpandF' v = error $ "Unrecognized variable: " ++ show v
 
-buildConfig :: FilterLenght -> DataLenght -> Int -> KernelConfig
-buildConfig filterLenght dataLenght ncpu =
-  KernelConfig{indF=isInd, reduceF=reduce, expandF=expandFunc, numericExpandF=numericExpandF', iniExpandF = iniExpandF', ncpu = ncpu}
-  where
-    expandFunc = expandFuncBuilder filterLenght dataLenght
+buildConfig :: ModelConfig -> KernelConfig
+buildConfig config@ModelConfig{..} =
+  KernelConfig
+    { indF = isInd,
+      reduceF = reduce,
+      expandF = expandFuncBuilder config,
+      numericExpandF = numericExpandF' config,
+      iniExpandF = iniExpandF',
+      ncpu = ncpu
+    }
 
-runModel :: FilterLenght -> DataLenght -> KernelOutput
-runModel filterLenght dataLenght = kernelExpr config finalExpr
+runModel :: ModelConfig -> KernelOutput
+runModel config = kernelExpr kconfig finalExpr
   where
-    finalExpr = buildExpr filterLenght dataLenght
-    config = buildConfig filterLenght dataLenght 1
+    finalExpr = buildExpr config
+    kconfig = buildConfig config
