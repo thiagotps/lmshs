@@ -21,6 +21,7 @@ testNumberOfEquations = hspec $
   where testNumber n m res =
           it ("N = " ++ show n ++ " and M = " ++ show m ++ " should produce " ++ show res) $
             numberOfEqs (runModel n m) `shouldBe` res
+        numberOfEqs = sum . levelSize
 
 amapIsNonZeroCounter :: [(String, Integer)] -> [(String, Integer)] -> Bool
 amapIsNonZeroCounter a b = A.getAMap (n <> m) == resMap
@@ -108,15 +109,6 @@ testNormalize = hspec $
                             n = STVar . Term . A.fromList $ lr
                             in normalize m == normalize n
 
-instance EqProp KernelOutput where
-  (=-=) = eq
-
-instance Arbitrary KernelOutput where
-  arbitrary = genericArbitrary
-
-  -- arbitrary = KernelOutput <$> arbitrary <*> arbitrary <*> arbitrary
-
-testKernelOutput = quickBatch (monoid (mempty :: KernelOutput))
 
 genRV :: FilterLenght -> DataLenght -> Gen Var
 genRV n m = oneof [genU, genV, genN]
@@ -145,4 +137,4 @@ testSplitInd = hspec $
 
 
 
-main = sequence [testAmap, testExpr, testNormalize, testSplitInd, testKernelOutput, testNumberOfEquations]
+main = sequence [testAmap, testExpr, testNormalize, testSplitInd, testNumberOfEquations]
