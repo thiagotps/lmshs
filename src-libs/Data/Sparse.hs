@@ -1,5 +1,5 @@
 -- | TODO: Write tests for this module
-module Symbolic.Sparse (module Symbolic.Sparse) where
+module Data.Sparse (module Data.Sparse) where
 
 import Control.Monad
 import Data.Vector.Generic.Mutable (new, write)
