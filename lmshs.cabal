@@ -54,8 +54,8 @@ library
                      Symbolic.Term,
                      Symbolic.STVar,
                      Symbolic.Kernel,
-                     Symbolic.Sparse,
-                     Model.Classic
+                     Model.Classic,
+                     Data.Sparse
 
     hs-source-dirs: src-libs
     -- NOTE: no explicit constraints on base needed

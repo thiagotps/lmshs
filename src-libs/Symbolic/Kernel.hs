@@ -6,7 +6,7 @@
 module Symbolic.Kernel
   ( module Symbolic.Kernel,
     module Symbolic.STVar,
-    module Symbolic.Sparse
+    module Data.Sparse
   )
 where
 
@@ -32,7 +32,7 @@ import Control.Monad.ST
 import Data.Bifunctor (second, first)
 import qualified Data.Vector.Unboxed as V
 
-import Symbolic.Sparse
+import Data.Sparse
 
 import qualified Data.List as L
 

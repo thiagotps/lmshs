@@ -9,7 +9,7 @@ import Symbolic.Kernel (KernelOutput (..), kernelExpr, buildEvaluator)
 import System.Environment (getArgs)
 import System.IO
 import Control.Monad
-import Symbolic.Sparse
+import Data.Sparse
 import Control.Concurrent (getNumCapabilities)
 import Data.Maybe
 
