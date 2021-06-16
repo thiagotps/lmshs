@@ -111,19 +111,23 @@ numericExpandF' ModelConfig{..} v =
     _ -> error $ "Unrecognized variable: " ++ show v
   where scale = 0.5
 
-buildConfig :: ModelConfig -> KernelConfig
-buildConfig config@ModelConfig{..} =
+buildKernelConfig :: ModelConfig -> KernelConfig
+buildKernelConfig config@ModelConfig{..} =
   KernelConfig
     { indF = isInd,
       reduceF = reduce,
       expandF = expandFuncBuilder config,
-      numericExpandF = numericExpandF' config,
-      iniExpandF = iniExpandF',
       ncpu = ncpu
     }
+
+
+buildNumericalConfig :: ModelConfig -> NumericalConfig
+buildNumericalConfig config =
+  NumericalConfig{numericExpandF = numericExpandF' config, iniExpandF = iniExpandF'}
+
 
 runModel :: ModelConfig -> KernelOutput
 runModel config = kernelExpr kconfig finalExpr
   where
     finalExpr = buildExpr config
-    kconfig = buildConfig config
+    kconfig = buildKernelConfig config
