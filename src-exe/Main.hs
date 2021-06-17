@@ -26,7 +26,8 @@ data ProgArgs = ProgArgs
     sigmav2 :: Double,
     filterLenght :: Int,
     dataLenght :: Int,
-    maxStepSize :: Bool
+    maxStepSize :: Bool,
+    binarySearchPrecision :: Int
   } deriving (Show, Eq, Data, Typeable)
 
 progArgs =
@@ -39,7 +40,9 @@ progArgs =
       sigmav2 = -1 &= help "variance (σᵥ²).",
       filterLenght = def &= help "Filter length." &= explicit &= name "N",
       dataLenght = def &= help "Data length." &= explicit &= name "M",
-      maxStepSize = def &=  help "Compute the maximum step-size"
+      maxStepSize = def &=  help "Compute the maximum step-size",
+      binarySearchPrecision = def &= opt (-4 :: Int) &= typ "INT"
+      &= help "The expoent describing the precision (i.e: if this is n than the precision is 10**(-n))"
     }
 
 isPower2 :: Int -> Bool
@@ -59,10 +62,9 @@ buildCustomMatrix (mc,sparseSym) stepSize = matrixA
     nc = buildNumericalConfig mc{Model.Classic.stepSize}
     NumericalMatrices{matrixA,..} = buildNumMatrices nc sparseSym
 
-binarySearch :: (ModelConfig,SparseSymbolic) -> Double -> Double -> Double
-binarySearch c =  bs
+binarySearch :: Double -> (ModelConfig,SparseSymbolic) -> Double -> Double -> Double
+binarySearch precision c =  bs
   where
-    precision = 10 ** (-4)
     check = isMatrixGood . buildCustomMatrix c
 
     bs :: Double -> Double -> Double
@@ -119,5 +121,6 @@ main = do
 
         when maxStepSize $ do
           putStrLn "Computing the maximum step-size ..."
-          let m = binarySearch (modelConfig, stateVars) 0.01 1
+          let precision = 10 ** fromIntegral binarySearchPrecision
+          let m = binarySearch precision (modelConfig, stateVars) 0.01 1
           putStrLn $ "Maximum step-size = " ++ show m
