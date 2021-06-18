@@ -3,6 +3,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NamedFieldPuns #-}
 module Symbolic.Kernel
   ( module Symbolic.Kernel,
     module Symbolic.STVar,
@@ -46,8 +47,6 @@ data KernelConfig = KernelConfig
   { indF :: IndFunc,
     expandF :: ExpandFunc,
     reduceF :: ReduceFunc,
-    numericExpandF :: NumericExpandFunc,
-    iniExpandF :: IniExpandFunc,
     ncpu :: Int
   }
 
@@ -80,15 +79,14 @@ term2Double f t = foldl (*) 1.0 [f v ^ n | (v, n) <- A.toList . getTerm $ t]
 expr2Double :: (Var -> Double) -> Expr -> Double
 expr2Double f e = sum [term2Double f t * fromIntegral n | (t, n) <- A.toList . getExpr $ e]
 
-collectFromExpr :: InnerConfig -> Expr -> [(STVar, Double)]
-collectFromExpr config@InnerConfig {kernelConfig=kc} (Expr m) = second (expr2Double f) <$> (A.toList . getSTSum $ s)
+collectFromExpr :: InnerConfig -> Expr -> [(STVar, Expr)]
+collectFromExpr config@InnerConfig {kernelConfig=kc} (Expr m) = A.toList . getSTSum $ s
   where
-    f = numericExpandF kc
     s =  mconcat [mulSTSum (reduce t) n | (t, n) <- A.toList m]
     reduce = reduceTerm config
     mulSTSum (STSum m) n = STSum . A.map (* fromIntegral n) $ m
 
-expand :: InnerConfig -> STVar -> [(STVar, Double)]
+expand :: InnerConfig -> STVar -> [(STVar, Expr)]
 expand config@InnerConfig{kernelConfig=kc} v@(STVar (Term m))  = collectFromExpr config s
   where
     s = product [expandF kc x ^ a | (x, a) <- A.toList m]
@@ -107,37 +105,53 @@ runRS :: RS r s a -> r -> s -> (s, a)
 runRS m r s = let (a, s', _) = runRWS m r s in (s', a)
 
 
+type SparseSymbolic = [(STVar, [(STVar, Expr)])]
+
 data KernelOutput = KernelOutput
   {
     levelSize :: [Int],
-    stateVarList :: [STVar],
+    stateVarList :: [STVar], -- NOTE: This field is redundant
+    stateVars :: SparseSymbolic,
+    buildEvaluator :: NumericalConfig -> Expr -> (Vector -> Double)
+  }
+
+data NumericalMatrices = NumericalMatrices
+  {
     matrixA :: Sparse,
     vectorY0 :: Vector,
     vectorB :: Vector
   } deriving (Eq, Show, Generic)
 
--- TODO: Improve this implementation
-buildMatrix :: KernelConfig -> [(STVar, [(STVar, Double)])] -> KernelOutput
-buildMatrix KernelConfig {iniExpandF = iniF} l =
-  KernelOutput {levelSize = [], stateVarList = stvList, matrixA = ma, vectorY0 = vY0, vectorB = vb}
+data NumericalConfig = NumericalConfig
+  {
+    numericExpandF :: NumericExpandFunc,
+    iniExpandF :: IniExpandFunc
+  }
+
+buildNumMatrices :: NumericalConfig -> SparseSymbolic -> NumericalMatrices
+buildNumMatrices NumericalConfig {iniExpandF, numericExpandF} lExpr =
+  NumericalMatrices {matrixA, vectorY0, vectorB}
   where
+    l = second (second (expr2Double numericExpandF) <$>) <$> lExpr
     stvList = map fst l
     innerLists =  map snd l
-    vY0 = V.fromList  $ map iniF stvList
+    vectorY0 = V.fromList  $ map iniExpandF stvList
 
     n = length l
     num = M.fromList $ stvList `zip` [0 ..] :: Map STVar Int
-    ma = Sparse . map (\il -> [(num ! stv, val) | (stv, val) <- il, stv /= mempty]) $ innerLists
-    vb = V.fromList $ [ fromMaybe 0 (L.lookup mempty il) | il <- innerLists ]
+    matrixA = Sparse . map (\il -> [(num ! stv, val) | (stv, val) <- il, stv /= mempty]) $ innerLists
+    vectorB = V.fromList $ [ fromMaybe 0 (L.lookup mempty il) | il <- innerLists ]
+
 
 
 kernel :: KernelConfig -> [STVar] -> KernelOutput
 kernel config rootList =
-  let (s, l) = runRS go (S.fromList . map normalize $ rootList, S.empty, 1) []
-      out = buildMatrix config s
-   in out {levelSize = l}
+  let (stateVars, levelSize) = runRS go (S.fromList . map normalize $ rootList, S.empty, 1) []
+      stateVarList = map fst stateVars
+  in KernelOutput {levelSize, stateVarList, stateVars,
+                   buildEvaluator = buildEvaluatorInKernel config stateVarList}
   where
-    go :: RS (Set STVar, Set STVar, Int) [(STVar, [(STVar, Double)])] [Int]
+    go :: RS (Set STVar, Set STVar, Int) SparseSymbolic [Int]
     go = do
       (visit, seen, level) <- ask
 
@@ -174,10 +188,10 @@ divide n s =  f (intLog2 n)
 kernelExpr :: KernelConfig -> Expr -> KernelOutput
 kernelExpr config expr = kernel config $ fst <$> collectFromExpr (InnerConfig config 1) expr
 
-buildEvaluator :: KernelConfig -> KernelOutput -> Expr -> (Vector -> Double)
-buildEvaluator config KernelOutput{..} expr = eval
+buildEvaluatorInKernel :: KernelConfig -> [STVar] -> NumericalConfig ->  Expr -> (Vector -> Double)
+buildEvaluatorInKernel config stateVarList NumericalConfig{numericExpandF} expr = eval
   where
-        (iniSTVlist, vec) = let l = collectFromExpr (InnerConfig config 1) expr
+        (iniSTVlist, vec) = let l = second (expr2Double numericExpandF) <$> collectFromExpr (InnerConfig config 1) expr
                                 in (normalize . fst <$> l, V.fromList $ snd <$> l)
         stvEnum = M.fromList (stateVarList `zip` [0..]) :: Map STVar Int
         idxVec = V.fromList $ map (stvEnum ! ) iniSTVlist

@@ -54,5 +54,5 @@ maxEigenValue :: Sparse -> Maybe Double
 maxEigenValue a = fmap snd . L.find (\(f,s) -> abs(s - f) <= abs f * precision) . take maxIterNumber $ zip eigenList (tail eigenList)
   where
     eigenList = powerMethodIteration a
-    precision = 10 ** (-5)
-    maxIterNumber = 10^4
+    precision = 10 ** (-5) -- NOTE: Maybe this shouldn't be hardcoded.
+    maxIterNumber = 10^4 -- NOTE: Maybe this shouldn't be hardcoded.
