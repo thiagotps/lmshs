@@ -60,7 +60,7 @@ library
     hs-source-dirs: src-libs
     -- NOTE: no explicit constraints on base needed
     --       as they're inherited from the 'library' stanza
-    build-depends: base ^>=4.13.0.0 ||  ^>= 4.12.0.0, containers, parallel, mtl, vector
+    build-depends: base ^>=4.13.0.0 ||  ^>= 4.12.0.0, containers, parallel, mtl, vector, ffi-teste
     default-extensions: GeneralizedNewtypeDeriving, DeriveGeneric, FlexibleInstances
     default-language:    Haskell2010
 
@@ -76,13 +76,23 @@ executable lmshs
   --other-extensions:
 
   -- Other library packages from which modules are imported.
-  build-depends:       base ^>=4.13.0.0 ||  ^>= 4.12.0.0, lmshs, mtl, vector, cmdargs
+  build-depends:       base ^>=4.13.0.0 ||  ^>= 4.12.0.0, lmshs, mtl, vector, cmdargs, ffi-teste
 
   -- Directories containing source files.
   hs-source-dirs:   src-exe
 
   -- Base language which the package is written in.
   default-language:    Haskell2010
+
+executable sparse-play
+  main-is:             SparsePlay.hs
+  ghc-options: -threaded
+  build-depends:       base ^>=4.13.0.0 ||  ^>= 4.12.0.0, lmshs, vector, ffi-teste
+  hs-source-dirs:   src-exe
+  default-language:    Haskell2010
+
+
+
 
 Test-Suite lmshs-test
     type:       exitcode-stdio-1.0

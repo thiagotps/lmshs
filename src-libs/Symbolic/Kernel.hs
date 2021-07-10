@@ -33,7 +33,8 @@ import Control.Monad.ST
 import Data.Bifunctor (second, first)
 import qualified Data.Vector.Unboxed as V
 
-import Data.Sparse
+import Data.Sparse hiding ((!))
+
 
 import qualified Data.List as L
 

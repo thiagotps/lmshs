@@ -53,10 +53,8 @@ isPower2 n | n <= 0 = False
            | even n = isPower2 (n `div` 2)
            | otherwise = False
 
-isMatrixGood :: Sparse -> Bool
-isMatrixGood m = case maxEigenValue m of
-  Just b -> abs b < 1.0
-  Nothing -> error "It was not possible to find the maximum eigenvalue for this matrix !"
+isMatrixGood :: Sparse -> Maybe Bool
+isMatrixGood m = (\b -> abs b < 1.0) <$> maxEigenValue m
 
 buildCustomMatrix :: (ModelConfig, SparseSymbolic) -> Double -> Sparse
 buildCustomMatrix (mc,sparseSym) stepSize = matrixA
@@ -64,14 +62,22 @@ buildCustomMatrix (mc,sparseSym) stepSize = matrixA
     nc = buildNumericalConfig mc{Model.Classic.stepSize}
     NumericalMatrices{matrixA,..} = buildNumMatrices nc sparseSym
 
-binarySearch :: Double -> (ModelConfig,SparseSymbolic) -> Double -> Double -> Double
+binarySearch :: Double -> (ModelConfig,SparseSymbolic) -> Double -> Double -> Either Sparse Double
 binarySearch precision c =  bs
   where
-    check = isMatrixGood . buildCustomMatrix c
+    check mid = let m = buildCustomMatrix c mid in
+                  case isMatrixGood m of
+                    Just r -> Right r
+                    Nothing -> Left m
 
-    bs :: Double -> Double -> Double
-    bs low high | abs (low - high) < precision = mid
-                | otherwise = if check mid then bs mid high else bs low mid
+    bs :: Double -> Double -> Either Sparse Double
+    bs low high | abs (low - high) < precision = Right mid
+                | otherwise = do
+                    ck <- check mid
+                    if ck
+                      then bs mid high
+                      else bs low mid
+
       where
         mid = (low + high) / 2
 
@@ -128,5 +134,9 @@ main = do
         when maxStepSize $ do
           putStrLn "Computing the maximum step-size ..."
           let precision = 10 ** fromIntegral binarySearchPrecision
-          let m = binarySearch precision (modelConfig, stateVars) 0.01 1
-          putStrLn $ "Maximum step-size = " ++ show m
+          case binarySearch precision (modelConfig, stateVars) 0.01 1 of
+            Right m -> putStrLn $ "Maximum step-size = " ++ show m
+            Left s -> do
+              let logFile = "lmshs.log"
+              putStrLn $ "Failed to compute maximum step-size. Writing details to " ++ logFile ++ " ..."
+              withFile logFile WriteMode $ \h -> hPrint h s

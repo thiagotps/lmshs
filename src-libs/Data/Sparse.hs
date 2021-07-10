@@ -11,7 +11,7 @@ import qualified Data.List as L
 
 type Vector = V.Vector Double
 
-newtype Sparse = Sparse {getSparse :: [[(Int, Double)]]} deriving (Eq, Show)
+newtype Sparse = Sparse {getSparse :: [[(Int, Double)]]} deriving (Eq, Show, Read)
 
 infix 7 !*!
 
@@ -50,9 +50,9 @@ powerMethodIteration a = eigen
     b = b0 : [ normalizeVec bk | bkl1 <- b, let bk = a !*! bkl1]
     eigen = [(bk !.! (a !*! bk)) / (bk !.! bk) | bk <- tail b]
 
-maxEigenValue :: Sparse -> Maybe Double
-maxEigenValue a = fmap snd . L.find (\(f,s) -> abs(s - f) <= abs f * precision) . take maxIterNumber $ zip eigenList (tail eigenList)
+maxEigenValue' :: Double -> Int -> Sparse -> Maybe Double
+maxEigenValue' precision maxIterNumber a = fmap snd . L.find (\(f,s) -> abs(s - f) <= abs f * precision) . take maxIterNumber $ zip eigenList (tail eigenList)
   where
     eigenList = powerMethodIteration a
-    precision = 10 ** (-5) -- NOTE: Maybe this shouldn't be hardcoded.
-    maxIterNumber = 10^4 -- NOTE: Maybe this shouldn't be hardcoded.
+
+maxEigenValue = maxEigenValue' (10 ** (-5)) (10^4)

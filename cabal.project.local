@@ -1,3 +1,5 @@
 profiling: False
 profiling-detail: all-functions
 optimization: 2
+packages:
+      /home/thiago/research/programming-languages/test_haskell/ffi-teste
