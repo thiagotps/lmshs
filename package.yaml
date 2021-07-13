@@ -1,0 +1,57 @@
+name:                lmshs
+version:             0.1.0.0
+github:              "githubuser/lmshs"
+license:             GPL-3
+author:              "Thiago Teodoro Pereira Silva"
+maintainer:          "thiagoteodoro501@gmail"
+copyright:           "2021 Thiago Teodoro Pereira Silva"
+
+# extra-source-files:
+# - README.md
+# - ChangeLog.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/githubuser/helloworld#readme> # TODO: Fix this
+
+dependencies:
+- base >= 4.7 && < 5
+- containers
+- parallel
+- mtl
+- vector
+- linear-algebra
+- cmdargs
+
+library:
+  source-dirs: src-libs
+  default-extensions: GeneralizedNewtypeDeriving, DeriveGeneric, FlexibleInstances
+
+executables:
+  lmshs:
+    main:                Main.hs
+    source-dirs:         src-exe
+    ghc-options:
+    - -threaded
+    - -O2
+    dependencies:
+    - lmshs
+
+tests:
+  symbolic-test:
+    main:                Test.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -O2
+    dependencies:
+    - lmshs
+    - QuickCheck
+    - hspec
+    - checkers
+    - generic-arbitrary
