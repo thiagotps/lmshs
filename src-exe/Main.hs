@@ -9,9 +9,13 @@ import Symbolic.Kernel (KernelOutput (..), kernelExpr, buildEvaluator, Numerical
 import System.Environment (getArgs)
 import System.IO
 import Control.Monad
-import Data.Sparse
+import Control.Applicative
+
+import LinearAlgebra.Sparse (SparseMatrix, powerMaxEigenValue, maxEigenValue, eigenDefaultConfig, EigenConfig(..), CompInfo, (!*.))
+import LinearAlgebra.Vector (VectorDouble, (.+.))
 import Control.Concurrent (getNumCapabilities)
 import Data.Maybe
+import Data.Either
 
 import System.Console.CmdArgs
 import Control.Applicative
@@ -53,24 +57,26 @@ isPower2 n | n <= 0 = False
            | even n = isPower2 (n `div` 2)
            | otherwise = False
 
-isMatrixGood :: Sparse -> Maybe Bool
-isMatrixGood m = (\b -> abs b < 1.0) <$> maxEigenValue m
+isMatrixGood :: SparseMatrix -> Either CompInfo Bool
+isMatrixGood m = (\b -> abs b < 1.0) <$> (case powerMaxEigenValue m of
+                                            Just eigen -> Right eigen
+                                            Nothing -> maxEigenValue eigenDefaultConfig{ncv= ncv eigenDefaultConfig + 10} m)
 
-buildCustomMatrix :: (ModelConfig, SparseSymbolic) -> Double -> Sparse
+buildCustomMatrix :: (ModelConfig, SparseSymbolic) -> Double -> SparseMatrix
 buildCustomMatrix (mc,sparseSym) stepSize = matrixA
   where
     nc = buildNumericalConfig mc{Model.Classic.stepSize}
     NumericalMatrices{matrixA,..} = buildNumMatrices nc sparseSym
 
-binarySearch :: Double -> (ModelConfig,SparseSymbolic) -> Double -> Double -> Either Sparse Double
+binarySearch :: Double -> (ModelConfig,SparseSymbolic) -> Double -> Double -> Either (SparseMatrix, CompInfo) Double
 binarySearch precision c =  bs
   where
     check mid = let m = buildCustomMatrix c mid in
                   case isMatrixGood m of
-                    Just r -> Right r
-                    Nothing -> Left m
+                    Right r -> Right r
+                    Left info -> Left (m, info)
 
-    bs :: Double -> Double -> Either Sparse Double
+    bs :: Double -> Double -> Either (SparseMatrix, CompInfo) Double
     bs low high | abs (low - high) < precision = Right mid
                 | otherwise = do
                     ck <- check mid
@@ -125,7 +131,7 @@ main = do
 
         when (isJust emseFile) $ do
           let eval = buildEvaluator numericalConfig finalExpr
-          let y = vectorY0 : [(matrixA !*! yk) !+! vectorB | yk <- y]
+          let y = vectorY0 : [(matrixA !*. yk) .+. vectorB | yk <- y]
           -- let y = vectorY0 : [matrixA #> yk `add` vectorB | yk <- y]
           withFile (fromJust emseFile) WriteMode $ \h -> do
             forM_ (zip [0 .. maxIter] (map eval y)) $ \(idx, val) -> do
@@ -136,7 +142,8 @@ main = do
           let precision = 10 ** fromIntegral binarySearchPrecision
           case binarySearch precision (modelConfig, stateVars) 0.01 1 of
             Right m -> putStrLn $ "Maximum step-size = " ++ show m
-            Left s -> do
+            Left (s, info) -> do
               let logFile = "lmshs.log"
+              putStrLn $ "CompInfo = " ++ show info
               putStrLn $ "Failed to compute maximum step-size. Writing details to " ++ logFile ++ " ..."
               withFile logFile WriteMode $ \h -> hPrint h s

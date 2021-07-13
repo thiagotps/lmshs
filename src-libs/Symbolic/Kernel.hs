@@ -6,8 +6,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 module Symbolic.Kernel
   ( module Symbolic.Kernel,
-    module Symbolic.STVar,
-    module Data.Sparse
+    module Symbolic.STVar
   )
 where
 
@@ -31,10 +30,14 @@ import Control.Monad
 import Control.Monad.RWS
 import Control.Monad.ST
 import Data.Bifunctor (second, first)
-import qualified Data.Vector.Unboxed as V
+import qualified Data.Vector.Storable as V
 
-import Data.Sparse hiding ((!))
+-- import LinearAlgebra.Sparse
+import LinearAlgebra.Vector (VectorDouble, (.*.))
+import qualified LinearAlgebra.Vector as VL
 
+import LinearAlgebra.Sparse (SparseMatrix)
+import qualified LinearAlgebra.Sparse as SL
 
 import qualified Data.List as L
 
@@ -113,21 +116,31 @@ data KernelOutput = KernelOutput
     levelSize :: [Int],
     stateVarList :: [STVar], -- NOTE: This field is redundant
     stateVars :: SparseSymbolic,
-    buildEvaluator :: NumericalConfig -> Expr -> (Vector -> Double)
+    buildEvaluator :: NumericalConfig -> Expr -> (VectorDouble -> Double)
   }
 
 data NumericalMatrices = NumericalMatrices
   {
-    matrixA :: Sparse,
-    vectorY0 :: Vector,
-    vectorB :: Vector
-  } deriving (Eq, Show, Generic)
+    matrixA :: SparseMatrix,
+    vectorY0 :: VectorDouble,
+    vectorB :: VectorDouble
+  } deriving (Show, Generic)
 
 data NumericalConfig = NumericalConfig
   {
     numericExpandF :: NumericExpandFunc,
     iniExpandF :: IniExpandFunc
   }
+
+-- TODO: Give it a better name.
+buildMatrix :: [[(Int, Double)]] -> SparseMatrix
+buildMatrix s = SL.fromList m n $ concat [map (addIdx i) l | (i,l) <- [0..] `zip` s]
+  where
+    m = length s
+    n = (maximum . map fst . concat $ s) + 1
+    addIdx i (a,b) = (i, a, b)
+
+
 
 buildNumMatrices :: NumericalConfig -> SparseSymbolic -> NumericalMatrices
 buildNumMatrices NumericalConfig {iniExpandF, numericExpandF} lExpr =
@@ -136,12 +149,12 @@ buildNumMatrices NumericalConfig {iniExpandF, numericExpandF} lExpr =
     l = second (second (expr2Double numericExpandF) <$>) <$> lExpr
     stvList = map fst l
     innerLists =  map snd l
-    vectorY0 = V.fromList  $ map iniExpandF stvList
+    vectorY0 = VL.fromList  $ map iniExpandF stvList
 
     n = length l
     num = M.fromList $ stvList `zip` [0 ..] :: Map STVar Int
-    matrixA = Sparse . map (\il -> [(num ! stv, val) | (stv, val) <- il, stv /= mempty]) $ innerLists
-    vectorB = V.fromList $ [ fromMaybe 0 (L.lookup mempty il) | il <- innerLists ]
+    matrixA = buildMatrix $ map (\il -> [(num ! stv, val) | (stv, val) <- il, stv /= mempty]) innerLists
+    vectorB = VL.fromList $ [ fromMaybe 0 (L.lookup mempty il) | il <- innerLists ]
 
 
 
@@ -189,14 +202,14 @@ divide n s =  f (intLog2 n)
 kernelExpr :: KernelConfig -> Expr -> KernelOutput
 kernelExpr config expr = kernel config $ fst <$> collectFromExpr (InnerConfig config 1) expr
 
-buildEvaluatorInKernel :: KernelConfig -> [STVar] -> NumericalConfig ->  Expr -> (Vector -> Double)
+buildEvaluatorInKernel :: KernelConfig -> [STVar] -> NumericalConfig ->  Expr -> (VectorDouble -> Double)
 buildEvaluatorInKernel config stateVarList NumericalConfig{numericExpandF} expr = eval
   where
         (iniSTVlist, vec) = let l = second (expr2Double numericExpandF) <$> collectFromExpr (InnerConfig config 1) expr
-                                in (normalize . fst <$> l, V.fromList $ snd <$> l)
+                                in (normalize . fst <$> l, VL.fromList $ snd <$> l)
         stvEnum = M.fromList (stateVarList `zip` [0..]) :: Map STVar Int
         idxVec = V.fromList $ map (stvEnum ! ) iniSTVlist
         eval y = let n = V.length idxVec
-                     sy :: Vector
-                     sy = V.generate n (\i -> let ii = idxVec V.! i in (y V.! ii))
-                     in vec !.! sy
+                     sy :: VectorDouble
+                     sy = VL.fromVector $ V.generate n (\i -> let ii = idxVec V.! i in (y VL.! ii))
+                     in vec .*. sy
