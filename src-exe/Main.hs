@@ -3,10 +3,11 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# OPTIONS_GHC -fno-cse #-}
 
 module Main where
-import Model.Classic (runModel, buildKernelConfig, buildExpr, ModelConfig (..), buildNumericalConfig)
-import Symbolic.Kernel (KernelOutput (..), kernelExpr, buildEvaluator, NumericalConfig (..), buildNumMatrices, NumericalMatrices (NumericalMatrices, matrixA, vectorY0, vectorB), SparseSymbolic)
+import Model.Classic (runModel, simpleRunModel, buildKernelConfig, buildExpr, NumericalModelConfig(..), ModelConfig (..), buildNumericalConfig)
+import Symbolic.Kernel (KernelOutput (..), kernelExpr, buildEvaluator, NumericalConfig (..), buildNumMatrices, NumericalMatrices (NumericalMatrices, matrixA, vectorY0, vectorB), SparseSymbolic, simpleKernelExpr)
 
 import System.Environment (getArgs)
 import System.IO
@@ -24,7 +25,7 @@ import Text.Printf (printf)
 import System.Console.CmdArgs
 
 
-data ProgArgs = ProgArgs
+data ProgArgs = Complete
   { numFile :: Maybe String,
     symFile :: Maybe String,
     emseFile :: Maybe String,
@@ -37,10 +38,15 @@ data ProgArgs = ProgArgs
     maxStepSize :: Bool,
     binarySearchPrecision :: Int,
     useSpectra :: Bool
+  } | Simple
+  {
+    filterLenght :: Int,
+    dataLenght :: Int,
+    startLevelForIA :: Maybe Int
   } deriving (Show, Eq, Data, Typeable)
 
-progArgs =
-  ProgArgs
+completeArgs =
+  Complete
     { numFile = def &= help "Where to write the numerical matrices.",
       symFile = def &= help "Where to write the symbolic matrices.",
       emseFile = def &= help "Where to write the emse evolution.",
@@ -55,6 +61,14 @@ progArgs =
       &= help "The expoent describing the precision (i.e: if this is n than the precision is 10**(-n))",
       useSpectra = def &= help "Compute the maximum eigenvalue using Spectra's algorithm when our power-method fails."
     }
+
+simpleArgs =
+  Simple
+  {
+      filterLenght = def &= help "Filter length." &= explicit &= name "N",
+      dataLenght = def &= help "Data length." &= explicit &= name "M",
+      startLevelForIA = def &= help "The level to start applying the IA assumption."
+  }
 
 isPower2 :: Int -> Bool
 isPower2 n | n <= 0 = False
@@ -72,7 +86,7 @@ isMatrixGood BinarySearchConfig{useSpectra} m = (\b -> abs b < 1.0) <$> (case po
                                               else Left NotConverging)
 
 buildCustomMatrix :: BinarySearchConfig -> Double -> SparseMatrix
-buildCustomMatrix BinarySearchConfig{modelConfig=mc,stateVars=sparseSym} stepSize = matrixA
+buildCustomMatrix BinarySearchConfig{numericalModelConfig=mc,stateVars=sparseSym} stepSize = matrixA
   where
     nc = buildNumericalConfig mc{Model.Classic.stepSize}
     NumericalMatrices{matrixA,..} = buildNumMatrices nc sparseSym
@@ -80,7 +94,7 @@ buildCustomMatrix BinarySearchConfig{modelConfig=mc,stateVars=sparseSym} stepSiz
 data BinarySearchConfig = BinarySearchConfig
   {
     precision :: Double,
-    modelConfig :: ModelConfig,
+    numericalModelConfig :: NumericalModelConfig,
     stateVars :: SparseSymbolic,
     useSpectra :: Bool
   }
@@ -104,23 +118,19 @@ binarySearch bsc@BinarySearchConfig{precision} =  bs
       where
         mid = (low + high) / 2
 
-
-main :: IO ()
-main = do
-  ProgArgs{..} <- cmdArgs progArgs
-  ncpu <- getNumCapabilities
-  print $ "Running with " ++ show ncpu ++ " threads."
-
+runProgram :: ProgArgs -> Int -> IO ()
+runProgram Complete{..} ncpu =  do
   if | filterLenght <= 0 -> putStrLn "filter lenght must be greater than 0"
      | dataLenght <= 0 -> putStrLn "data lenght must be greater than 0"
      | not . isPower2 $ ncpu -> putStrLn $ "You can only pass power of 2 number of threads!!! Current is " ++ show ncpu
      | isJust emseFile && (maxIter < 0 || stepSize < 0 || sigmav2 < 0) -> putStrLn "MaxIter, stepsize or sigmav2 is not specified."
      | maxStepSize && (sigmav2 < 0) -> putStrLn "sigmav2 was not specified"
      | otherwise -> do
-        let modelConfig = ModelConfig{stepSize, sigmav = sqrt sigmav2, filterLenght, dataLenght, ncpu, startLevelForIA}
+        let modelConfig = ModelConfig{filterLenght, dataLenght, ncpu, startLevelForIA}
+        let numericalModelConfig = NumericalModelConfig{stepSize, sigmav = sqrt sigmav2}
         let finalExpr = buildExpr modelConfig
         let kernelConfig = buildKernelConfig modelConfig
-        let numericalConfig = buildNumericalConfig modelConfig
+        let numericalConfig = buildNumericalConfig numericalModelConfig
         let out@KernelOutput {..} = kernelExpr kernelConfig finalExpr
 
         case startLevelForIA of
@@ -158,10 +168,26 @@ main = do
           putStrLn "Computing the maximum step-size ..."
           putStrLn . printf "useSpectra = %s" $ show useSpectra
           let precision = 10 ** fromIntegral binarySearchPrecision
-          case binarySearch BinarySearchConfig{precision, modelConfig, stateVars, useSpectra} 0.01 1 of
+          case binarySearch BinarySearchConfig{precision, numericalModelConfig, stateVars, useSpectra} 0.01 1 of
             Right m -> putStrLn $ "Maximum step-size = " ++ show m
             Left (s, info) -> do
               let logFile = printf "lmshs_%d_%d_%d.log" filterLenght  dataLenght (fromMaybe 0 startLevelForIA)
               putStrLn $ "CompInfo = " ++ show info
               putStrLn $ "Failed to compute maximum step-size. Writing details to " ++ logFile ++ " ..."
               withFile logFile WriteMode $ \h -> hPrint h s
+
+runProgram Simple{..} ncpu =  do
+  let modelConfig = ModelConfig{filterLenght, dataLenght, ncpu, startLevelForIA}
+  let levelSize = simpleRunModel modelConfig
+  putStrLn $ "numberOfLevels = " ++ (show . length $ levelSize)
+  putStrLn $ "levelSize = " ++ show levelSize
+  putStrLn $ "numberOfEqs = " ++ (show . sum $ levelSize)
+
+
+
+main :: IO ()
+main = do
+  args <- cmdArgs (modes [completeArgs, simpleArgs])
+  ncpu <- getNumCapabilities
+  print $ "Running with " ++ show ncpu ++ " threads."
+  runProgram args ncpu

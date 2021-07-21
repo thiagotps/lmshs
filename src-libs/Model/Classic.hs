@@ -75,8 +75,6 @@ data ModelConfig = ModelConfig
     filterLenght :: Int,
     dataLenght :: Int,
     ncpu :: Int,
-    stepSize :: Double,
-    sigmav :: Double,
     startLevelForIA :: Maybe Int
   }
 
@@ -123,9 +121,8 @@ numFactorial :: Int -> Double
 numFactorial n | n <= 1 = 1.0
                | otherwise = fromIntegral n * numFactorial ( n - 1 )
 
--- TODO:
-numericExpandF' :: ModelConfig -> Var -> Double
-numericExpandF' ModelConfig{..} v =
+numericExpandF' :: NumericalModelConfig -> Var -> Double
+numericExpandF' NumericalModelConfig{stepSize,sigmav} v =
   case v of
     Var{name = 'a', index1 = Just i} -> 1.0 / fromIntegral (i + 1)
     Var{name = 'γ', index1 = Just n} -> numFactorial n * (scale ^ n)
@@ -144,13 +141,26 @@ buildKernelConfig config@ModelConfig{..} =
     }
 
 
-buildNumericalConfig :: ModelConfig -> NumericalConfig
+data NumericalModelConfig = NumericalModelConfig
+  {
+    stepSize :: Double,
+    sigmav :: Double
+  } deriving (Show, Eq)
+
+buildNumericalConfig :: NumericalModelConfig -> NumericalConfig
 buildNumericalConfig config =
   NumericalConfig{numericExpandF = numericExpandF' config, iniExpandF = iniExpandF'}
 
 
 runModel :: ModelConfig -> KernelOutput
 runModel config = kernelExpr kconfig finalExpr
+  where
+    finalExpr = buildExpr config
+    kconfig = buildKernelConfig config
+
+
+simpleRunModel :: ModelConfig -> [Int]
+simpleRunModel config = simpleKernelExpr kconfig finalExpr
   where
     finalExpr = buildExpr config
     kconfig = buildKernelConfig config

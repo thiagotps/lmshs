@@ -156,6 +156,23 @@ buildNumMatrices NumericalConfig {iniExpandF, numericExpandF} lExpr =
     matrixA = buildMatrix $ map (\il -> [(num ! stv, val) | (stv, val) <- il, stv /= mempty]) innerLists
     vectorB = VL.fromList $ [ fromMaybe 0 (L.lookup mempty il) | il <- innerLists ]
 
+simpleKernel :: KernelConfig -> [STVar] -> [Int]
+simpleKernel config rootList = go (S.fromList . map normalize $ rootList) S.empty 1
+  where
+    go visit seen level | S.null visit = mempty
+                        | otherwise = length visit : go newNeigh newSeen (level + 1)
+      where
+        newSeen = seen <> visit
+        transform visitSet = mconcat $ do
+                v <- S.toList visitSet
+                let r = first normalize <$> expand (InnerConfig config level) v
+                let s = S.fromList . filter (/= mempty) . map fst $ r
+                return (s S.\\ newSeen)
+        newNeigh = runEval $ do
+                let l = divide (ncpu config) visit
+                mconcat <$> mapM (rpar . transform) l
+
+
 
 
 kernel :: KernelConfig -> [STVar] -> KernelOutput
@@ -201,6 +218,9 @@ divide n s =  f (intLog2 n)
 
 kernelExpr :: KernelConfig -> Expr -> KernelOutput
 kernelExpr config expr = kernel config $ fst <$> collectFromExpr (InnerConfig config 1) expr
+
+simpleKernelExpr :: KernelConfig -> Expr -> [Int]
+simpleKernelExpr config expr = simpleKernel config $ fst <$> collectFromExpr (InnerConfig config 1) expr
 
 buildEvaluatorInKernel :: KernelConfig -> [STVar] -> NumericalConfig ->  Expr -> (VectorDouble -> Double)
 buildEvaluatorInKernel config stateVarList NumericalConfig{numericExpandF} expr = eval
