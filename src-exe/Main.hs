@@ -2,6 +2,8 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+
 module Main where
 import Model.Classic (runModel, buildKernelConfig, buildExpr, ModelConfig (..), buildNumericalConfig)
 import Symbolic.Kernel (KernelOutput (..), kernelExpr, buildEvaluator, NumericalConfig (..), buildNumMatrices, NumericalMatrices (NumericalMatrices, matrixA, vectorY0, vectorB), SparseSymbolic)
@@ -11,14 +13,15 @@ import System.IO
 import Control.Monad
 import Control.Applicative
 
-import LinearAlgebra.Sparse (SparseMatrix, powerMaxEigenValue, maxEigenValue, eigenDefaultConfig, EigenConfig(..), CompInfo, (!*.))
+import LinearAlgebra.Sparse (SparseMatrix, powerMaxEigenValue, maxEigenValue, eigenDefaultConfig, EigenConfig(..), CompInfo(..), (!*.))
 import LinearAlgebra.Vector (VectorDouble, (.+.))
 import Control.Concurrent (getNumCapabilities)
 import Data.Maybe
 import Data.Either
 
+import Text.Printf (printf)
+
 import System.Console.CmdArgs
-import Control.Applicative
 
 
 data ProgArgs = ProgArgs
@@ -32,7 +35,8 @@ data ProgArgs = ProgArgs
     dataLenght :: Int,
     startLevelForIA :: Maybe Int,
     maxStepSize :: Bool,
-    binarySearchPrecision :: Int
+    binarySearchPrecision :: Int,
+    useSpectra :: Bool
   } deriving (Show, Eq, Data, Typeable)
 
 progArgs =
@@ -48,7 +52,8 @@ progArgs =
       startLevelForIA = def &= help "The level to start applying the IA assumption.",
       maxStepSize = def &=  help "Compute the maximum step-size",
       binarySearchPrecision = def &= opt (-4 :: Int) &= typ "INT"
-      &= help "The expoent describing the precision (i.e: if this is n than the precision is 10**(-n))"
+      &= help "The expoent describing the precision (i.e: if this is n than the precision is 10**(-n))",
+      useSpectra = def &= help "Compute the maximum eigenvalue using Spectra's algorithm when our power-method fails."
     }
 
 isPower2 :: Int -> Bool
@@ -57,22 +62,34 @@ isPower2 n | n <= 0 = False
            | even n = isPower2 (n `div` 2)
            | otherwise = False
 
-isMatrixGood :: SparseMatrix -> Either CompInfo Bool
-isMatrixGood m = (\b -> abs b < 1.0) <$> (case powerMaxEigenValue m of
-                                            Just eigen -> Right eigen
-                                            Nothing -> maxEigenValue eigenDefaultConfig{ncv= ncv eigenDefaultConfig + 10} m)
 
-buildCustomMatrix :: (ModelConfig, SparseSymbolic) -> Double -> SparseMatrix
-buildCustomMatrix (mc,sparseSym) stepSize = matrixA
+isMatrixGood :: BinarySearchConfig -> SparseMatrix -> Either CompInfo Bool
+isMatrixGood BinarySearchConfig{useSpectra} m = (\b -> abs b < 1.0) <$> (case powerMaxEigenValue m of
+                                            Just eigen -> Right eigen
+                                            Nothing ->
+                                              if useSpectra
+                                              then maxEigenValue eigenDefaultConfig{ncv= ncv eigenDefaultConfig + 10} m
+                                              else Left NotConverging)
+
+buildCustomMatrix :: BinarySearchConfig -> Double -> SparseMatrix
+buildCustomMatrix BinarySearchConfig{modelConfig=mc,stateVars=sparseSym} stepSize = matrixA
   where
     nc = buildNumericalConfig mc{Model.Classic.stepSize}
     NumericalMatrices{matrixA,..} = buildNumMatrices nc sparseSym
 
-binarySearch :: Double -> (ModelConfig,SparseSymbolic) -> Double -> Double -> Either (SparseMatrix, CompInfo) Double
-binarySearch precision c =  bs
+data BinarySearchConfig = BinarySearchConfig
+  {
+    precision :: Double,
+    modelConfig :: ModelConfig,
+    stateVars :: SparseSymbolic,
+    useSpectra :: Bool
+  }
+
+binarySearch :: BinarySearchConfig  -> Double -> Double -> Either (SparseMatrix, CompInfo) Double
+binarySearch bsc@BinarySearchConfig{precision} =  bs
   where
-    check mid = let m = buildCustomMatrix c mid in
-                  case isMatrixGood m of
+    check mid = let m = buildCustomMatrix bsc mid in
+                  case isMatrixGood bsc m of
                     Right r -> Right r
                     Left info -> Left (m, info)
 
@@ -139,11 +156,12 @@ main = do
 
         when maxStepSize $ do
           putStrLn "Computing the maximum step-size ..."
+          putStrLn . printf "useSpectra = %s" $ show useSpectra
           let precision = 10 ** fromIntegral binarySearchPrecision
-          case binarySearch precision (modelConfig, stateVars) 0.01 1 of
+          case binarySearch BinarySearchConfig{precision, modelConfig, stateVars, useSpectra} 0.01 1 of
             Right m -> putStrLn $ "Maximum step-size = " ++ show m
             Left (s, info) -> do
-              let logFile = "lmshs.log"
+              let logFile = printf "lmshs_%d_%d_%d.log" filterLenght  dataLenght (fromMaybe 0 startLevelForIA)
               putStrLn $ "CompInfo = " ++ show info
               putStrLn $ "Failed to compute maximum step-size. Writing details to " ++ logFile ++ " ..."
               withFile logFile WriteMode $ \h -> hPrint h s
