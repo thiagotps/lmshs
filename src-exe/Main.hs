@@ -140,6 +140,7 @@ runProgram Complete{..} ncpu =  do
         putStrLn $ "numberOfLevels = " ++ (show . length $ levelSize)
         putStrLn $ "levelSize = " ++ show levelSize
         putStrLn $ "numberOfEqs = " ++ (show . sum $ levelSize)
+        putStrLn $ "number of elements in the resulting matrix: " ++ (show . sum . map (length . snd) $ stateVars )
 
         let NumericalMatrices{matrixA, vectorY0, vectorB} = buildNumMatrices numericalConfig stateVars
 
