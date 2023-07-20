@@ -56,7 +56,7 @@ completeArgs =
       startLevelForIA = def &= help "The level to start applying the IA assumption.",
       maxStepSize = def &= help "Compute the maximum step-size",
       binarySearchPrecision =
-        def &= opt (-4 :: Int) &= typ "INT"
+        4 &= typ "INT"
           &= help "The expoent describing the precision (i.e: if this is n than the precision is 10**(-n))",
       useSpectra = def &= help "Compute the maximum eigenvalue using Spectra's algorithm when our power-method fails."
     }
@@ -170,7 +170,7 @@ runProgram Complete {..} ncpu = do
         when maxStepSize $ do
           putStrLn "Computing the maximum step-size ..."
           putStrLn . printf "useSpectra = %s" $ show useSpectra
-          let precision = 10 ** fromIntegral binarySearchPrecision
+          let precision = 10 ** fromIntegral (-binarySearchPrecision)
           case binarySearch BinarySearchConfig {precision, numericalModelConfig, stateVars, useSpectra} 0.01 1 of
             Right m -> putStrLn $ "Maximum step-size = " ++ show m
             Left (s, info) -> do
